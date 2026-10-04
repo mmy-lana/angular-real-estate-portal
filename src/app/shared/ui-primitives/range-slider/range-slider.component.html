@@ -1,0 +1,55 @@
+@if (label()) {
+  <div class="flex items-baseline justify-between gap-3 mb-1">
+    <span class="editorial-label text-(--color-brand-secondary)">{{ label() }}</span>
+    <span class="text-[11px] tabular-nums text-(--color-brand-primary)">{{ valueText() }}</span>
+  </div>
+}
+
+<div
+  #track
+  class="slider-track"
+  role="group"
+  [attr.aria-label]="label() || 'Value range'"
+  [attr.aria-disabled]="disabled() ? 'true' : null"
+  (pointermove)="onPointerMove($event)"
+  (pointerup)="onPointerUp($event)"
+  (pointercancel)="onPointerUp($event)"
+>
+  <div class="slider-rail" aria-hidden="true"></div>
+  <div
+    class="slider-range"
+    aria-hidden="true"
+    [style.left.%]="minPercent()"
+    [style.width.%]="maxPercent() - minPercent()"
+  ></div>
+
+  <button
+    type="button"
+    class="slider-thumb"
+    role="slider"
+    [style.left.%]="minPercent()"
+    [attr.aria-valuemin]="min()"
+    [attr.aria-valuemax]="localMax()"
+    [attr.aria-valuenow]="localMin()"
+    [attr.aria-label]="(label() || 'Range') + ' minimum'"
+    [attr.data-active]="activeThumb() === 'min'"
+    [disabled]="disabled()"
+    (pointerdown)="onTrackPointerDown($event, 'min')"
+    (keydown)="onThumbKeydown($event, 'min')"
+  ></button>
+
+  <button
+    type="button"
+    class="slider-thumb"
+    role="slider"
+    [style.left.%]="maxPercent()"
+    [attr.aria-valuemin]="localMin()"
+    [attr.aria-valuemax]="max()"
+    [attr.aria-valuenow]="localMax()"
+    [attr.aria-label]="(label() || 'Range') + ' maximum'"
+    [attr.data-active]="activeThumb() === 'max'"
+    [disabled]="disabled()"
+    (pointerdown)="onTrackPointerDown($event, 'max')"
+    (keydown)="onThumbKeydown($event, 'max')"
+  ></button>
+</div>

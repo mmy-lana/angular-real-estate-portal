@@ -9,7 +9,7 @@
  * project workspace, so no user browser session is ever touched.
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer-core';
@@ -72,6 +72,23 @@ const VIEWPORTS = {
 
 const results = [];
 let failures = 0;
+
+/**
+ * Static contract check against the compiled stylesheet: the dual-thumb slider
+ * must isolate touch on `.slider-track` and never on `:host`.
+ */
+function readBuiltCssContract(assetsDir) {
+  // Component styles are inlined into the component definition by the Angular
+  // build, so the contract is asserted across both stylesheets and JS chunks.
+  const files = readdirSync(assetsDir).filter((name) => name.endsWith('.css') || name.endsWith('.js'));
+  const source = files.map((name) => readFileSync(resolve(assetsDir, name), 'utf8')).join('\n');
+  return {
+    files: files.length,
+    hasBrandUtility: source.includes('--color-brand-bg'),
+    hasTrackTouchRule: /\.slider-track[^{]*\{[^}]*touch-action:\s*none/.test(source),
+    hostTouchRule: /:host[^{]*\{[^}]*touch-action/.test(source)
+  };
+}
 
 function record(scenario, name, ok, detail = '') {
   results.push({ scenario, name, ok, detail });
@@ -321,6 +338,161 @@ async function run() {
       }
     }
     assert('responsive', 'interactive elements meet 44px touch targets', touchTargetFailures.length === 0, touchTargetFailures.join(' ; '));
+
+    // -------------------------------------------------------- ui primitives
+    console.log('\n[phase] atomic ui primitives');
+
+    await page.setViewport(VIEWPORTS['w390']);
+    await gotoAndSettle(page, '/preview/components');
+    await page.waitForSelector('ui-button', { timeout: 20_000 });
+
+    const buttonCount = await page.$$eval('ui-button button', (nodes) => nodes.length);
+    assert('primitives', 'button variants render', buttonCount >= 6, `count=${buttonCount}`);
+
+    const primaryButton = await page.$('ui-button button');
+    await primaryButton.click();
+    await page
+      .waitForFunction(
+        () => (document.querySelector('[data-testid="button-log"]')?.textContent ?? '').includes('primary@'),
+        { timeout: 5000 }
+      )
+      .catch(() => undefined);
+    const buttonLog = await page.$eval('[data-testid="button-log"]', (el) => el.textContent ?? '');
+    assert('primitives', 'button emits activation event', buttonLog.includes('primary@'), buttonLog.trim());
+
+    await page.type('ui-input input', 'Elena');
+    const typedValue = await page.$eval('ui-input input', (el) => el.value);
+    assert('primitives', 'input accepts and reports text', typedValue === 'Elena', typedValue);
+
+    const inputAria = await page.$$eval('ui-input input', (nodes) =>
+      nodes.map((node) => ({
+        id: node.id,
+        labelled: Boolean(document.querySelector(`label[for="${node.id}"]`)),
+        described: node.getAttribute('aria-describedby'),
+        height: Math.round(node.getBoundingClientRect().height)
+      }))
+    );
+    assert(
+      'primitives',
+      'inputs are labelled and touch sized',
+      inputAria.every((entry) => entry.labelled && entry.height >= 44),
+      JSON.stringify(inputAria)
+    );
+
+    await page.type('ui-input input[type="email"]', 'not-an-email');
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const emailState = await page.evaluate(() => {
+      const field = document.querySelector('ui-input input[type="email"]');
+      const describedBy = field?.getAttribute('aria-describedby') ?? '';
+      const message = describedBy ? document.getElementById(describedBy)?.textContent ?? '' : '';
+      return {
+        invalid: field?.getAttribute('aria-invalid'),
+        message
+      };
+    });
+    assert(
+      'primitives',
+      'invalid input exposes aria-invalid and an alert message',
+      emailState.invalid === 'true' && emailState.message.toLowerCase().includes('valid email'),
+      JSON.stringify(emailState)
+    );
+
+    const selectValue = await page.$eval('ui-select select', (el) => el.value);
+    assert('primitives', 'select holds its bound value', selectValue === 'date_desc', selectValue);
+
+    const sliderState = await page.evaluate(() => {
+      const host = document.querySelector('ui-range-slider');
+      const track = host?.querySelector('.slider-track');
+      const hostStyle = host ? getComputedStyle(host) : null;
+      const trackStyle = track ? getComputedStyle(track) : null;
+      const thumbs = Array.from(host?.querySelectorAll('.slider-thumb') ?? []);
+      return {
+        hostTouchAction: hostStyle?.touchAction ?? null,
+        trackTouchAction: trackStyle?.touchAction ?? null,
+        thumbCount: thumbs.length,
+        roles: thumbs.map((thumb) => thumb.getAttribute('role')),
+        values: thumbs.map((thumb) => thumb.getAttribute('aria-valuenow')),
+        height: track ? Math.round(track.getBoundingClientRect().height) : 0
+      };
+    });
+    assert(
+      'primitives',
+      'touch-action is isolated on the inner track, never on the host',
+      sliderState.trackTouchAction === 'none' && sliderState.hostTouchAction !== 'none',
+      JSON.stringify(sliderState)
+    );
+    assert(
+      'primitives',
+      'range slider exposes two ARIA slider thumbs',
+      sliderState.thumbCount === 2 && sliderState.roles.every((role) => role === 'slider'),
+      JSON.stringify(sliderState)
+    );
+
+    await page.evaluate(() => {
+      const thumb = document.querySelectorAll('ui-range-slider .slider-thumb')[0];
+      thumb.focus();
+    });
+    await page.keyboard.press('ArrowRight');
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const keyboardRange = await page.$eval('[data-testid="range-log"]', (el) => el.textContent ?? '');
+    assert('primitives', 'slider thumb responds to keyboard', /250,000/.test(keyboardRange), keyboardRange.trim());
+
+    const sheetButtons = await page.$$('ui-button button');
+    let sheetButton = null;
+    for (const candidate of sheetButtons) {
+      const text = await candidate.evaluate((node) => node.textContent ?? '');
+      if (text.includes('Open bottom sheet')) {
+        sheetButton = candidate;
+        break;
+      }
+    }
+    await sheetButton.click();
+    await page.waitForSelector('[role="dialog"]', { timeout: 10_000 });
+    const sheetState = await page.evaluate(() => {
+      const dialog = document.querySelector('[role="dialog"]');
+      const surface = dialog?.querySelector('.sheet-surface');
+      const active = document.activeElement;
+      return {
+        modal: dialog?.getAttribute('aria-modal'),
+        maxHeightVar: getComputedStyle(document.documentElement).getPropertyValue('--sheet-max-height').trim(),
+        overflowLocked: document.body.style.overflow,
+        focusInside: Boolean(active && dialog?.contains(active)),
+        sheetHeight: surface ? Math.round(surface.getBoundingClientRect().height) : 0,
+        viewportHeight: window.innerHeight
+      };
+    });
+    assert('primitives', 'sheet modal opens as a modal dialog', sheetState.modal === 'true', JSON.stringify(sheetState));
+    assert(
+      'primitives',
+      'sheet max height tracks the visual viewport',
+      sheetState.maxHeightVar.endsWith('px') && sheetState.sheetHeight <= sheetState.viewportHeight,
+      JSON.stringify(sheetState)
+    );
+    assert(
+      'primitives',
+      'opening the sheet locks page scroll and moves focus inside',
+      sheetState.overflowLocked === 'hidden' && sheetState.focusInside,
+      JSON.stringify(sheetState)
+    );
+
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.querySelector('[role="dialog"]') === null, { timeout: 10_000 });
+    assert('primitives', 'escape closes the sheet modal', true);
+
+    const sheetViewportBehavior = await page.evaluate(() => {
+      const dialog = document.querySelector('[role="dialog"]');
+      return dialog === null;
+    });
+    assert('primitives', 'sheet is removed from the DOM after close', sheetViewportBehavior);
+
+    const cssContract = readBuiltCssContract(resolve(projectRoot, 'dist', 'assets'));
+    assert('primitives', 'brand theme utilities are compiled', cssContract.hasBrandUtility);
+    assert(
+      'primitives',
+      'stylesheet declares touch-action on the track rule only',
+      cssContract.hasTrackTouchRule && !cssContract.hostTouchRule,
+      JSON.stringify(cssContract)
+    );
 
     // -------------------------------------------------------------- errors
     console.log('\n[phase] runtime health');

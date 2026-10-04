@@ -1,0 +1,73 @@
+/*
+ * Touch isolation for the dual-thumb range.
+ *
+ * `touch-action: none` is declared on `.slider-track` — the inner track wrapper
+ * that owns the pointer geometry — and never on `:host`. Binding it on the host
+ * would silently disable page scrolling for every ancestor scroll container
+ * while the slider is on screen.
+ */
+:host {
+  display: block;
+  width: 100%;
+}
+
+.slider-track {
+  position: relative;
+  height: 44px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.slider-rail {
+  position: absolute;
+  inset-inline: 0;
+  top: 50%;
+  height: 1px;
+  transform: translateY(-50%);
+  background-color: var(--color-brand-line);
+}
+
+.slider-range {
+  position: absolute;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  background-color: var(--color-brand-accent);
+}
+
+.slider-thumb {
+  position: absolute;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  margin-left: -12px;
+  border-radius: 999px;
+  border: 1px solid var(--color-brand-line);
+  background-color: var(--color-brand-surface);
+  transform: translateY(-50%);
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+
+.slider-thumb::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background-color: var(--color-brand-primary);
+}
+
+.slider-thumb:focus-visible,
+.slider-thumb[data-active='true'] {
+  outline: 2px solid var(--color-brand-accent);
+  outline-offset: 2px;
+  border-color: var(--color-brand-primary);
+}
+
+.slider-thumb:active {
+  cursor: grabbing;
+}

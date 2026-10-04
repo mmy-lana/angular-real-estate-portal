@@ -37,6 +37,10 @@ export const routes: Routes = [
     ]
   },
   {
+    path: 'preview/components',
+    loadComponent: () => import('./pages/ui-preview/ui-preview.component').then((m) => m.UiPreviewComponent)
+  },
+  {
     path: '**',
     redirectTo: '/404'
   }

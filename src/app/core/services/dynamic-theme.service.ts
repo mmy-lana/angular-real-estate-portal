@@ -30,6 +30,19 @@ export class DynamicThemeService {
     rootStyle.setProperty('--font-serif-brand', tokens.fontFamilySerif);
     rootStyle.setProperty('--font-sans-brand', tokens.fontFamilySans);
     rootStyle.setProperty('--radius-brand', tokens.borderRadiusBase);
+
+    // Derived roles, composed in the browser so a tenant only has to publish
+    // the nine palette tokens defined by the theme contract.
+    rootStyle.setProperty(
+      '--color-brand-muted',
+      `color-mix(in srgb, ${tokens.secondaryColor} 72%, ${tokens.backgroundColor})`
+    );
+    rootStyle.setProperty(
+      '--color-brand-line',
+      `color-mix(in srgb, ${tokens.textColor} 12%, ${tokens.backgroundColor})`
+    );
+    rootStyle.setProperty('--color-brand-inverse', tokens.backgroundColor);
+
     this.tokensState.set({ ...tokens });
   }
 
