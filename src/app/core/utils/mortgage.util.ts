@@ -52,14 +52,24 @@ export function computeMonthlyMortgage(input: MortgageCalculationInput): Monthly
 
   const monthlyPropertyTax = (input.homePrice * (propertyTaxRate / 100)) / 12;
   const monthlyInsurance = (input.homePrice * (insuranceRate / 100)) / 12;
-  const total = monthlyPrincipalAndInterest + monthlyPropertyTax + monthlyInsurance + hoaFee;
+
+  // The total is reconciled from the rounded line items rather than from the
+  // unrounded sum, so the breakdown a client reads always adds up exactly to the
+  // payment that is charged.
+  const principalAndInterest = roundCurrency(monthlyPrincipalAndInterest);
+  const propertyTax = roundCurrency(monthlyPropertyTax);
+  const homeownersInsurance = roundCurrency(monthlyInsurance);
+  const hoaDues = roundCurrency(hoaFee);
+  const totalMonthlyPayment = roundCurrency(
+    principalAndInterest + propertyTax + homeownersInsurance + hoaDues
+  );
 
   return {
-    principalAndInterest: roundCurrency(monthlyPrincipalAndInterest),
-    propertyTax: roundCurrency(monthlyPropertyTax),
-    homeownersInsurance: roundCurrency(monthlyInsurance),
-    hoaDues: roundCurrency(hoaFee),
-    totalMonthlyPayment: roundCurrency(total)
+    principalAndInterest,
+    propertyTax,
+    homeownersInsurance,
+    hoaDues,
+    totalMonthlyPayment
   };
 }
 
@@ -147,21 +157,23 @@ export function buildAmortizationSummary(
   let balance = principal;
   let month = 0;
 
+  // Interest and principal are rounded to the cent on every period, mirroring
+  // how a servicer posts the payment. Carrying raw floats instead would drift
+  // by several dollars across a thirty year schedule.
   while (balance > 0.005 && month < totalMonths) {
-    const interest = balance * monthlyRate;
-    const principalPortion = payment <= 0 ? 0 : Math.min(balance, Math.max(0, payment - interest));
-    balance = Math.max(0, balance - principalPortion);
+    const monthlyInterest = roundCurrency(balance * monthlyRate);
+    const principalPortion =
+      payment <= 0 ? 0 : Math.min(balance, Math.max(0, payment - monthlyInterest));
+    balance = Math.max(0, roundCurrency(balance - principalPortion));
     month += 1;
     if (month % 12 === 0) {
-      schedule.push({ year: month / 12, remainingBalance: roundCurrency(balance) });
+      schedule.push({ year: month / 12, remainingBalance: balance });
     }
   }
 
   if (schedule.length > 0) {
-    schedule[schedule.length - 1] = {
-      year: schedule[schedule.length - 1].year,
-      remainingBalance: 0
-    };
+    const lastEntry = schedule[schedule.length - 1];
+    schedule[schedule.length - 1] = { year: lastEntry.year, remainingBalance: 0 };
   }
 
   return schedule;

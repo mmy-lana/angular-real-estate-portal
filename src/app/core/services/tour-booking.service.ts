@@ -14,13 +14,24 @@ export type TourBookingResult =
   | { ok: true; booking: TourBookingRequest }
   | { ok: false; reason: string };
 
-function createBookingId(): string {
+/**
+ * Generates a booking identifier from a cryptographically secure source.
+ *
+ * `crypto.randomUUID` is preferred; older or non-secure contexts fall back to
+ * `crypto.getRandomValues`. `Math.random` is deliberately never used: booking
+ * references are shown to clients and must not be guessable.
+ */
+export function createBookingId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
-  // Deterministic, collision-resistant fallback for non-secure contexts.
-  const random = Math.floor(Math.random() * 0xffffffff).toString(16);
-  return `bk-${Date.now().toString(16)}-${random}`;
+
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  throw new Error('A cryptographically secure random source is required to issue booking references.');
 }
 
 /**
@@ -88,8 +99,24 @@ export class TourBookingService {
     return stored.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
-  /** Cancels an inquiry, refusing cross-tenant transitions. */
-  public async cancelBooking(tenantId: string, bookingId: string): Promise<TourBookingResult> {
+  /**
+   * Cancels an inquiry.
+   *
+   * Knowing a booking id is not sufficient: the caller must also present the
+   * client email captured when the request was created, and the booking must
+   * belong to the calling tenant. Without the email check any client could
+   * cancel an arbitrary inquiry by enumerating identifiers.
+   */
+  public async cancelBooking(
+    tenantId: string,
+    bookingId: string,
+    clientEmail: string
+  ): Promise<TourBookingResult> {
+    const normalizedEmail = (clientEmail ?? '').trim().toLowerCase();
+    if (!isValidEmail(normalizedEmail)) {
+      return { ok: false, reason: 'A valid client email is required to verify cancellation.' };
+    }
+
     const stored = await this.storage.getById<TourBookingRequest>(BOOKING_STORE, bookingId);
     if (!stored) {
       return { ok: false, reason: 'Tour request not found.' };
@@ -97,6 +124,10 @@ export class TourBookingService {
     if (stored.tenantId !== tenantId) {
       return { ok: false, reason: 'Security violation: booking does not belong to the target tenant.' };
     }
+    if (stored.clientEmail.trim().toLowerCase() !== normalizedEmail) {
+      return { ok: false, reason: 'Authorization failed: email does not match booking record.' };
+    }
+
     const cancelled: TourBookingRequest = { ...stored, status: 'cancelled' };
     await this.storage.put(BOOKING_STORE, cancelled);
     return { ok: true, booking: cancelled };

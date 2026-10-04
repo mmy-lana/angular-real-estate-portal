@@ -119,10 +119,17 @@ export class TenantContextService {
       this.resolutionState.set('resolving');
       try {
         const tenant = await loader();
-        if (tenant) {
+        if (!tenant) {
+          this.resolutionState.set('error');
+          return null;
+        }
+        // A deactivated tenant is resolved for the guard to judge, but never
+        // becomes the active context: no downstream surface may read it.
+        if (tenant.isActive) {
           this.tenantState.set(tenant);
           this.resolutionState.set('resolved');
         } else {
+          this.tenantState.set(null);
           this.resolutionState.set('error');
         }
         return tenant;

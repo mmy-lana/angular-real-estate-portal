@@ -164,28 +164,69 @@ export class IndexedDbStorageService {
   }
 
   /**
-   * Ensures the demo portfolio exists. Safe to call from multiple resolvers and
-   * guards concurrently: the in-flight promise is shared.
+   * Ensures the demo portfolio exists.
+   *
+   * All three stores are written inside a single read/write transaction: an
+   * abort at any point rolls the whole seed back, so a partially seeded
+   * database can never be mistaken for a populated one on the next boot.
    */
   public async seedIfEmpty(): Promise<void> {
     if (this.seedPromise) {
       return this.seedPromise;
     }
     this.isSeeding.set(true);
+
     this.seedPromise = (async () => {
       try {
         const tenantCount = await this.count(TENANT_STORE);
         if (tenantCount > 0) {
           return;
         }
-        await this.putMany(TENANT_STORE, MOCK_TENANTS);
-        await this.putMany(AGENT_STORE, MOCK_AGENTS);
-        await this.putMany(PROPERTY_STORE, MOCK_PROPERTIES.map(sanitizePropertyForIngest));
+
+        const db = await this.getDatabase();
+        const properties = MOCK_PROPERTIES.map(sanitizePropertyForIngest);
+
+        if (!db) {
+          this.ensureMemoryStores();
+          for (const tenant of MOCK_TENANTS) {
+            this.memoryStores?.get(TENANT_STORE)?.set(tenant.id, tenant);
+          }
+          for (const agent of MOCK_AGENTS) {
+            this.memoryStores?.get(AGENT_STORE)?.set(agent.id, agent);
+          }
+          for (const property of properties) {
+            this.memoryStores?.get(PROPERTY_STORE)?.set(property.id, property);
+          }
+          return;
+        }
+
+        await new Promise<void>((resolve, reject) => {
+          const transaction = db.transaction([TENANT_STORE, AGENT_STORE, PROPERTY_STORE], 'readwrite');
+          const tenantStore = transaction.objectStore(TENANT_STORE);
+          const agentStore = transaction.objectStore(AGENT_STORE);
+          const propertyStore = transaction.objectStore(PROPERTY_STORE);
+
+          for (const tenant of MOCK_TENANTS) {
+            tenantStore.put(tenant);
+          }
+          for (const agent of MOCK_AGENTS) {
+            agentStore.put(agent);
+          }
+          for (const property of properties) {
+            propertyStore.put(property);
+          }
+
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () =>
+            reject(transaction.error ?? new Error('Atomic seed transaction failed'));
+          transaction.onabort = () => reject(transaction.error ?? new Error('Atomic seed transaction aborted'));
+        });
       } finally {
         this.isSeeding.set(false);
         this.seedPromise = null;
       }
     })();
+
     return this.seedPromise;
   }
 

@@ -52,12 +52,12 @@
       {{ formattedPrice() }}
     </p>
 
-    <ul class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-(--color-brand-secondary)">
-      <li class="truncate max-w-full">{{ property().specs.bedrooms }} beds</li>
-      <li aria-hidden="true" class="text-(--color-brand-line)">·</li>
-      <li class="truncate max-w-full">{{ property().specs.bathrooms }} baths</li>
-      <li aria-hidden="true" class="text-(--color-brand-line)">·</li>
-      <li class="truncate max-w-full tabular-nums">{{ interiorArea() }}</li>
+    <ul class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-(--color-brand-secondary)">
+      <li class="whitespace-nowrap">{{ property().specs.bedrooms }} beds</li>
+      <li aria-hidden="true" class="select-none text-(--color-brand-line)">·</li>
+      <li class="whitespace-nowrap">{{ property().specs.bathrooms }} baths</li>
+      <li aria-hidden="true" class="select-none text-(--color-brand-line)">·</li>
+      <li class="whitespace-nowrap tabular-nums">{{ interiorArea() }}</li>
     </ul>
 
     <!-- Architect credit is dropped below 390px so the specs row never wraps awkwardly. -->

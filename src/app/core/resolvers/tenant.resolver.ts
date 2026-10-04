@@ -23,7 +23,9 @@ export const tenantResolver: ResolveFn<Tenant | RedirectCommand> = async (route)
   const hostname = windowRef?.location?.hostname ?? null;
   const tenant = await context.resolveTenant(slug, hostname);
 
-  if (!tenant) {
+  // A deactivated tenant is refused here, at resolve time, so the tenant shell is
+  // never constructed and its palette never reaches the document root.
+  if (!tenant || !tenant.isActive) {
     return new RedirectCommand(router.parseUrl(NOT_FOUND_PATH));
   }
 
@@ -40,7 +42,10 @@ export const propertyResolver: ResolveFn<{ property: Property; agent: AgentProfi
     const context = inject(TenantContextService);
     const propertyData = inject(PropertyDataService);
 
-    const tenantSlug = route.paramMap.get('tenantSlug');
+    // Child snapshots do not inherit parent path parameters, so the tenant slug is
+    // read up the snapshot chain before it is treated as a tenant boundary.
+    const tenantSlug =
+      route.paramMap.get('tenantSlug') ?? route.parent?.paramMap.get('tenantSlug') ?? null;
     const propertySlug = route.paramMap.get('propertySlug');
 
     if (!tenantSlug || !propertySlug) {

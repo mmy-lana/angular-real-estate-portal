@@ -102,6 +102,15 @@ export class MortgageCalculatorComponent {
   protected readonly donutRadius = DONUT_RADIUS;
   protected readonly donutCircumference = DONUT_CIRCUMFERENCE;
 
+  /**
+   * Text drafts for the free-entry numeric fields. The field owns the string the
+   * user typed so a trailing decimal point ("1.") survives keystrokes instead of
+   * being reformatted back to "1" by the bound model value.
+   */
+  protected readonly taxInputDraft = signal('0');
+  protected readonly insuranceInputDraft = signal('0');
+  protected readonly hoaInputDraft = signal('0');
+
   protected readonly validationIssues = computed(() => validateMortgageInput(this.form()));
 
   protected readonly breakdown = computed<MonthlyPaymentBreakdown | null>(() => {
@@ -162,7 +171,9 @@ export class MortgageCalculatorComponent {
           ? (current.downPaymentAmount / current.homePrice) * 100
           : 20;
         const downPaymentAmount = Math.round((price * Math.min(100, Math.max(0, previousPercent))) / 100);
-        this.form.set(buildMortgageInputFromPrice(price, { downPaymentAmount }));
+        const profile = buildMortgageInputFromPrice(price, { downPaymentAmount });
+        this.form.set(profile);
+        this.syncTextDrafts(profile);
       }
     });
 
@@ -198,22 +209,25 @@ export class MortgageCalculatorComponent {
   }
 
   protected onTaxInput(rawValue: string): void {
-    const rate = Number(rawValue);
-    if (Number.isFinite(rate)) {
+    this.taxInputDraft.set(rawValue);
+    const rate = this.parseNumericDraft(rawValue);
+    if (rate !== null) {
       this.patch({ annualPropertyTaxRatePercentage: Math.min(10, Math.max(0, rate)) });
     }
   }
 
   protected onInsuranceInput(rawValue: string): void {
-    const rate = Number(rawValue);
-    if (Number.isFinite(rate)) {
+    this.insuranceInputDraft.set(rawValue);
+    const rate = this.parseNumericDraft(rawValue);
+    if (rate !== null) {
       this.patch({ annualHomeInsuranceRatePercentage: Math.min(10, Math.max(0, rate)) });
     }
   }
 
   protected onHoaInput(rawValue: string): void {
-    const fee = Number(rawValue);
-    if (Number.isFinite(fee)) {
+    this.hoaInputDraft.set(rawValue);
+    const fee = this.parseNumericDraft(rawValue);
+    if (fee !== null) {
       this.patch({ monthlyHoaFee: Math.min(100000, Math.max(0, fee)) });
     }
   }
@@ -241,6 +255,26 @@ export class MortgageCalculatorComponent {
     const span = range.max - range.min;
     const ratio = span <= 0 ? 0 : ((range.current - range.min) / span) * 100;
     return `linear-gradient(to right, var(--color-brand-primary) ${ratio}%, var(--color-brand-line) ${ratio}%)`;
+  }
+
+  /**
+   * Parses a draft string, returning `null` while it is still being typed.
+   * A trailing separator ("1.", "-") is intentionally treated as incomplete
+   * rather than as zero, so the caret position and typed characters survive.
+   */
+  private parseNumericDraft(rawValue: string): number | null {
+    const candidate = rawValue.trim();
+    if (candidate === '' || candidate.endsWith('.')) {
+      return null;
+    }
+    const parsed = Number(candidate);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  private syncTextDrafts(profile: MortgageCalculationInput): void {
+    this.taxInputDraft.set(String(profile.annualPropertyTaxRatePercentage));
+    this.insuranceInputDraft.set(String(profile.annualHomeInsuranceRatePercentage));
+    this.hoaInputDraft.set(String(profile.monthlyHoaFee));
   }
 
   private patch(changes: Partial<MortgageCalculationInput>): void {

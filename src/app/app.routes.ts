@@ -19,18 +19,17 @@ export const routes: Routes = [
   {
     path: 't/:tenantSlug',
     component: TenantShellComponent,
+    canActivate: [tenantActiveGuard],
     resolve: { tenant: tenantResolver },
     children: [
       {
         path: '',
-        canActivate: [tenantActiveGuard],
         loadComponent: () =>
           import('./pages/property-catalog/property-catalog.component').then((m) => m.PropertyCatalogComponent)
       },
       {
         path: 'property/:propertySlug',
         resolve: { listing: propertyResolver },
-        canActivate: [tenantActiveGuard],
         loadComponent: () =>
           import('./pages/property-detail/property-detail.component').then((m) => m.PropertyDetailComponent)
       }

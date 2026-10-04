@@ -40,19 +40,122 @@ export function serializeTransform(transform: ViewportTransform): string {
 }
 
 /**
- * Strips script tags, inline event listeners, and javascript: links from raw SVG strings.
- * Scope note: Used exclusively for controlled seed and ingest data. If opening system
- * to untrusted user-uploaded SVGs, upgrade to DOMPurify with { USE_PROFILES: { svg: true } }.
+ * Elements that can execute code, pull in foreign documents or re-reference
+ * external markup. They are removed wholesale rather than attribute-filtered.
+ */
+const FORBIDDEN_SVG_TAGS = new Set([
+  'script',
+  'foreignobject',
+  'iframe',
+  'object',
+  'embed',
+  'audio',
+  'video',
+  'style',
+  'use',
+  'handler'
+]);
+
+/** Schemes that can execute or exfiltrate when resolved from a rendered SVG. */
+const DANGEROUS_URL_SCHEME = /(?:javascript|vbscript|data|file|blob)\s*:/i;
+
+/** CSS constructs that can fetch, execute or bind behaviour inside a style attribute. */
+const DANGEROUS_STYLE_VALUE = /(?:url\s*\(|expression\s*\(|javascript\s*:|@import|behaviou?r\s*:|-moz-binding)/i;
+
+function isHrefAttribute(name: string): boolean {
+  return name === 'href' || name === 'xlink:href' || name.endsWith(':href');
+}
+
+/**
+ * Removes every attribute and element that can carry script from a parsed node.
+ *
+ * Attribute inspection happens on the DOM tree, so entity encoding
+ * (`jav&#x61;script:`), non-whitespace attribute delimiters (`<svg/onload=>`)
+ * and nested payloads are all resolved before the allow/deny decision is made.
+ */
+function sanitizeSvgNode(element: Element): void {
+  for (const attribute of Array.from(element.attributes)) {
+    const name = attribute.name.toLowerCase();
+    const value = attribute.value.trim();
+
+    if (name.startsWith('on')) {
+      element.removeAttribute(attribute.name);
+      continue;
+    }
+
+    if (name === 'style' && DANGEROUS_STYLE_VALUE.test(value)) {
+      element.removeAttribute(attribute.name);
+      continue;
+    }
+
+    if (isHrefAttribute(name) && DANGEROUS_URL_SCHEME.test(value)) {
+      element.setAttribute(attribute.name, '#');
+    }
+  }
+
+  for (const child of Array.from(element.children)) {
+    if (FORBIDDEN_SVG_TAGS.has(child.tagName.toLowerCase())) {
+      child.remove();
+      continue;
+    }
+    sanitizeSvgNode(child);
+  }
+}
+
+/**
+ * Conservative textual pass used only when no DOM parser exists (unit tests in a
+ * non-DOM runtime). It is strictly weaker than the DOM walker and never used in
+ * the browser.
+ */
+function sanitizeSvgText(trimmed: string): string {
+  return trimmed
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<foreignobject\b[^<]*(?:(?!<\/foreignobject>)<[^<]*)*<\/foreignobject>/gi, '')
+    .replace(/<[a-z]+\b[^>]*(?:\bon\w+\s*=\s*"[^"]*"|\bon\w+\s*=\s*'[^']*')[^>]*>/gi, (tag) =>
+      tag.replace(/\s*\bon\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    )
+    .replace(/(href|xlink:href)\s*=\s*["']\s*(?:javascript|vbscript|data)\s*:[^"']*["']/gi, 'href="#"')
+    .trim();
+}
+
+/**
+ * Parses and sanitizes SVG markup through the XML DOM before serialization.
+ *
+ * The renderer trusts this output (it is painted with
+ * `bypassSecurityTrustHtml`), so anything that cannot be parsed into a tree is
+ * discarded outright rather than passed through with regex surgery. Malformed,
+ * empty or non-`<svg>` payloads return an empty string.
  */
 export function validateAndSanitizeSvgIngest(rawSvg: string): string {
-  if (!rawSvg) return '';
-  return rawSvg
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/<foreignObject\b[^<]*(?:(?!<\/foreignObject)<[^<]*)*<\/foreignObject>/gi, '')
-    .replace(/(\son\w+\s*=\s*["'][^"']*["'])|(\son\w+\s*=\s*[^\s>]+)/gi, '')
-    .replace(/(href|xlink:href)\s*=\s*["']\s*javascript:[^"']*["']/gi, '$1="#"')
-    .replace(/(href|xlink:href)\s*=\s*["']\s*data:text\/html[^"']*["']/gi, '$1="#"')
-    .trim();
+  if (!rawSvg || typeof rawSvg !== 'string') {
+    return '';
+  }
+
+  const trimmed = rawSvg.trim();
+  if (trimmed === '' || !trimmed.toLowerCase().includes('<svg')) {
+    return '';
+  }
+
+  if (typeof DOMParser === 'undefined' || typeof XMLSerializer === 'undefined') {
+    return sanitizeSvgText(trimmed);
+  }
+
+  try {
+    const documentNode = new DOMParser().parseFromString(trimmed, 'image/svg+xml');
+    if (documentNode.querySelector('parsererror')) {
+      return '';
+    }
+
+    const root = documentNode.documentElement;
+    if (!root || root.tagName.toLowerCase() !== 'svg') {
+      return '';
+    }
+
+    sanitizeSvgNode(root);
+    return new XMLSerializer().serializeToString(root);
+  } catch {
+    return '';
+  }
 }
 
 /** True when the sanitiser had to strip something from the payload. */

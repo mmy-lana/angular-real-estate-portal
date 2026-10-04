@@ -177,6 +177,42 @@ async function clickElement(page, handle) {
   await page.mouse.click(point.x, point.y);
 }
 
+/**
+ * Injected into every page so storage probes can run inside the application
+ * origin — the harness cannot open IndexedDB from Node.
+ */
+const STORAGE_HELPERS = `
+window.openPortalDb = () =>
+  new Promise((resolve, reject) => {
+    const request = indexedDB.open('real_estate_portal_db');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+window.readAll = (db, store) =>
+  new Promise((resolve) => {
+    const request = db.transaction(store, 'readonly').objectStore(store).getAll();
+    request.onsuccess = () => resolve(request.result);
+  });
+window.writeRecord = (db, store, record) =>
+  new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).put(record);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+window.probeStoreCounts = async () => {
+  const db = await window.openPortalDb();
+  const counts = {};
+  for (const name of ['tenants', 'agents', 'properties', 'bookings']) {
+    counts[name] = await new Promise((resolve) => {
+      const request = db.transaction(name, 'readonly').objectStore(name).count();
+      request.onsuccess = () => resolve(request.result);
+    });
+  }
+  return { ...counts, expectedAgents: 4, expectedProperties: 7 };
+};
+`;
+
 async function gotoAndSettle(page, path) {
   await page.goto(`${baseUrl}${path}`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   await page.waitForFunction(() => document.querySelector('app-root')?.children.length > 0, {
@@ -225,6 +261,7 @@ async function run() {
     const errors = { console: [], pageErrors: [], requestFailures: [] };
     attachErrorCollectors(page, errors);
     await installNetworkStub(page);
+    await page.evaluateOnNewDocument(STORAGE_HELPERS);
 
     // ---------------------------------------------------------------- routing
     console.log('\n[phase] routing & tenant resolution');
@@ -932,6 +969,209 @@ async function run() {
     await page.waitForFunction(() => document.querySelector('[role="dialog"]') === null, { timeout: 10_000 });
 
     // ------------------------------------------------------ tenant switcher
+    // --------------------------------------------- security & data invariants
+    console.log('\n[phase] security and data invariants');
+
+    await gotoAndSettle(page, '/preview/components');
+    await page.waitForSelector('[data-testid="invariants"] ui-button button', { timeout: 20_000 });
+
+    const invariantsRunner = await page.$('[data-testid="invariants"] ui-button button');
+    await clickElement(page, invariantsRunner);
+    await page.waitForFunction(
+      () => document.querySelectorAll('[data-testid="invariants"] li[data-testid^="invariant-"]').length >= 5,
+      { timeout: 20_000 }
+    );
+
+    const invariantRows = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('[data-testid="invariants"] li[data-testid^="invariant-"]')).map((row) => ({
+        key: row.getAttribute('data-testid'),
+        text: (row.textContent ?? '').replace(/\s+/g, ' ').trim()
+      }))
+    );
+    const failingInvariants = invariantRows.filter((row) => row.text.includes('!'));
+    assert(
+      'invariants',
+      'every domain invariant passes in the live runtime',
+      invariantRows.length >= 5 && failingInvariants.length === 0,
+      failingInvariants.map((row) => `${row.key}: ${row.text}`).join(' | ')
+    );
+
+    const invariantDetail = (key) => invariantRows.find((row) => row.key === `invariant-${key}`)?.text ?? '';
+    const svgInvariant = invariantDetail('svg-sanitizer');
+    assert(
+      'invariants',
+      'SEC-01: adversarial SVG vectors are neutralized by the DOM parser',
+      svgInvariant.includes('neutralized') && !/<script|\son\w+=/i.test(svgInvariant),
+      svgInvariant.slice(0, 200)
+    );
+    assert(
+      'invariants',
+      'FIN-01: payment envelope reconciles and amortization settles',
+      invariantDetail('financial-reconciliation').includes('reconcile exactly'),
+      invariantDetail('financial-reconciliation').slice(0, 200)
+    );
+    assert(
+      'invariants',
+      'DATA-02: booking fallback uses a CSPRNG token',
+      invariantDetail('booking-identifier').includes('CSPRNG'),
+      invariantDetail('booking-identifier').slice(0, 200)
+    );
+    assert(
+      'invariants',
+      'SEC-04: hostile theme tokens fall back to platform defaults',
+      /primary=#2c2b29/i.test(invariantDetail('theme-validation')),
+      invariantDetail('theme-validation').slice(0, 200)
+    );
+    assert(
+      'invariants',
+      'SEC-03: cancellation requires the verified client email',
+      invariantDetail('booking-authorization').includes('refused'),
+      invariantDetail('booking-authorization').slice(0, 200)
+    );
+
+    const themeAfterInvariants = await page.evaluate(() =>
+      document.documentElement.style.getPropertyValue('--color-brand-primary').trim().toLowerCase()
+    );
+    assert('invariants', 'tenant theme is restored after invariant run', themeAfterInvariants === '#2c2b29', themeAfterInvariants);
+
+    // DATA-01: seeding is atomic and idempotent across boots.
+    const firstBoot = await page.evaluate(() => window.probeStoreCounts());
+    await gotoAndSettle(page, '/preview/components');
+    await page.waitForSelector('[data-testid="invariants"]', { timeout: 20_000 });
+    const secondBoot = await page.evaluate(() => window.probeStoreCounts());
+    assert(
+      'invariants',
+      'DATA-01: seeding is complete and idempotent across boots',
+      firstBoot.tenants === 2 &&
+        firstBoot.agents === firstBoot.expectedAgents &&
+        firstBoot.properties === firstBoot.expectedProperties &&
+        secondBoot.tenants === firstBoot.tenants &&
+        secondBoot.agents === firstBoot.agents &&
+        secondBoot.properties === firstBoot.properties,
+      JSON.stringify({ firstBoot, secondBoot })
+    );
+
+    // SEC-02: an inactive tenant never reaches the shell or the document root.
+    await page.evaluate(async () => {
+      const db = await window.openPortalDb();
+      const tenants = await window.readAll(db, 'tenants');
+      const tenant = tenants.find((row) => row.slug === 'atelier-living');
+      await window.writeRecord(db, 'tenants', {
+        ...tenant,
+        isActive: false,
+        branding: {
+          ...tenant.branding,
+          themeTokens: { ...tenant.branding.themeTokens, primaryColor: '#ff00aa' }
+        }
+      });
+    });
+    await gotoAndSettle(page, '/t/atelier-living');
+    await page.waitForFunction(() => location.pathname === '/404', { timeout: 20_000 }).catch(() => undefined);
+    const inactiveLeak = await page.evaluate(() => ({
+      url: location.pathname,
+      primary: document.documentElement.style.getPropertyValue('--color-brand-primary').trim().toLowerCase(),
+      shell: document.querySelectorAll('app-tenant-shell').length
+    }));
+    assert(
+      'invariants',
+      'SEC-02: inactive tenant redirects before the shell is constructed',
+      inactiveLeak.url === '/404' && inactiveLeak.shell === 0 && inactiveLeak.primary !== '#ff00aa',
+      JSON.stringify(inactiveLeak)
+    );
+
+    await page.evaluate(async () => {
+      const db = await window.openPortalDb();
+      const tenants = await window.readAll(db, 'tenants');
+      const tenant = tenants.find((row) => row.slug === 'atelier-living');
+      await window.writeRecord(db, 'tenants', {
+        ...tenant,
+        isActive: true,
+        branding: {
+          ...tenant.branding,
+          themeTokens: { ...tenant.branding.themeTokens, primaryColor: '#2C2B29' }
+        }
+      });
+    });
+    await gotoAndSettle(page, '/t/atelier-living');
+    await page.waitForSelector('app-property-catalog', { timeout: 20_000 });
+    const restoredTenant = await page.evaluate(() =>
+      document.documentElement.style.getPropertyValue('--color-brand-primary').trim().toLowerCase()
+    );
+    assert('invariants', 'reactivated tenant restores its storefront', restoredTenant === '#2c2b29', restoredTenant);
+
+    // UI-01: a trailing decimal point survives keystrokes.
+    await gotoAndSettle(page, '/preview/components');
+    await page.waitForSelector('#mc-rate', { timeout: 20_000 });
+    const decimalEntry = await page.evaluate(async () => {
+      const label = Array.from(document.querySelectorAll('app-mortgage-calculator ui-input label')).find((node) =>
+        node.textContent?.includes('property tax')
+      );
+      const field = document.getElementById(label.getAttribute('for'));
+      field.focus();
+      field.value = '1.';
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      const afterDot = field.value;
+      field.value = '1.25';
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      return { afterDot, afterDigits: field.value };
+    });
+    assert(
+      'ui-decimal-entry',
+      'UI-01: typing "1." keeps the decimal point until digits follow',
+      decimalEntry.afterDot === '1.' && decimalEntry.afterDigits === '1.25',
+      JSON.stringify(decimalEntry)
+    );
+
+    // UI-02: separators never orphan onto their own line at 360px.
+    await page.setViewport(VIEWPORTS['w360']);
+    await gotoAndSettle(page, '/t/atelier-living');
+    await page.waitForSelector('app-property-catalog app-property-card', { timeout: 20_000 });
+    const orphanSeparators = await page.evaluate(() => {
+      const offenders = [];
+      for (const card of document.querySelectorAll('app-property-card article')) {
+        const items = Array.from(card.querySelectorAll('ul li'));
+        for (let index = 1; index < items.length; index += 1) {
+          const item = items[index];
+          if ((item.textContent ?? '').trim() !== '\u00b7') continue;
+          const dotTop = Math.round(item.getBoundingClientRect().top);
+          const previousRect = items[index - 1].getBoundingClientRect();
+          if (Math.abs(previousRect.top - dotTop) > 2) {
+            offenders.push('separator wrapped below its item');
+          }
+        }
+      }
+      return offenders;
+    });
+    assert(
+      'ui-layout',
+      'UI-02: specs separators never wrap onto their own line',
+      orphanSeparators.length === 0,
+      orphanSeparators.join(' | ')
+    );
+
+    await gotoAndSettle(page, '/t/atelier-living/property/the-kura-residence');
+    await page.waitForSelector('app-property-detail dl', { timeout: 20_000 });
+    const structureCell = await page.evaluate(() => {
+      const cells = Array.from(document.querySelectorAll('app-property-detail dl > div'));
+      const structure = cells.find((cell) => cell.querySelector('dt')?.textContent?.includes('Structure'));
+      const value = structure?.querySelector('dd');
+      if (!value) return null;
+      return {
+        text: (value.textContent ?? '').trim(),
+        overflow: value.scrollWidth - value.clientWidth
+      };
+    });
+    assert(
+      'ui-layout',
+      'UI-02: structural material wraps instead of truncating at 360px',
+      structureCell !== null && structureCell.text.includes('Basalt') && structureCell.overflow <= 1,
+      JSON.stringify(structureCell)
+    );
+
+    await page.setViewport(VIEWPORTS['w390']);
+
     console.log('\n[phase] tenant switch utility');
 
     await gotoAndSettle(page, '/t/atelier-living');
