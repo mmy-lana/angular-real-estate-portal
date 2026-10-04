@@ -1,23 +1,60 @@
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { TenantContextService } from '../../core/services/tenant-context.service';
+import { DEFAULT_TENANT_SLUG } from '../../app.routes';
 
+/**
+ * Terminal route for an unknown tenant slug, deactivated tenant or missing
+ * residence. It reuses the active tenant theme when one is already resolved so
+ * the exit state never flashes an unbranded palette.
+ */
 @Component({
   selector: 'app-not-found',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterLink],
   template: `
-    <div class="min-h-screen flex items-center justify-center p-6 bg-stone-100 text-stone-900">
-      <div class="max-w-md w-full border border-stone-300 p-8 bg-white text-center">
-        <span class="text-[10px] tracking-widest uppercase text-stone-400 block mb-2">404 Exception</span>
-        <h1 class="text-3xl font-serif mb-4">Location Not Found</h1>
-        <p class="text-sm text-stone-600 mb-8 leading-relaxed">
-          The requested tenant agency domain or architectural listing cannot be located in the register.
+    <div class="flex min-h-screen items-center justify-center bg-(--color-brand-bg) px-4 py-16 text-(--color-brand-text)">
+      <div class="w-full max-w-lg border border-(--color-brand-line) bg-(--color-brand-surface) p-8 text-center">
+        <p class="editorial-label text-(--color-brand-secondary)">404 · Outside the register</p>
+        <h1 class="mt-3 text-3xl text-(--color-brand-primary) sm:text-4xl">Location not found</h1>
+        <p class="mt-4 text-pretty text-sm leading-relaxed text-(--color-brand-secondary)">
+          The agency domain, tenant scope or architectural listing you requested is not held in this
+          register. Listings never cross agency boundaries, so a valid residence may exist under a
+          different tenant.
         </p>
-        <a routerLink="/t/atelier-living" class="inline-block text-xs uppercase tracking-widest px-6 py-3 bg-stone-900 text-white font-medium hover:bg-stone-800 transition-colors">
-          Return to Atelier Living
-        </a>
+
+        <div class="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
+          <a
+            [routerLink]="recoveryLink()"
+            class="inline-flex min-h-11 items-center justify-center border border-(--color-brand-primary) bg-(--color-brand-primary) px-5 editorial-label text-(--color-brand-inverse) hover:opacity-90"
+          >
+            Return to residences
+          </a>
+          <a
+            routerLink="/preview/components"
+            class="inline-flex min-h-11 items-center justify-center border border-(--color-brand-line) px-5 editorial-label text-(--color-brand-secondary) hover:border-(--color-brand-primary)"
+          >
+            Design system
+          </a>
+        </div>
+
+        @if (activeAgency(); as agency) {
+          <p class="mt-8 border-t border-(--color-brand-line) pt-5 text-[11px] text-(--color-brand-muted)">
+            Currently resolving: {{ agency }} · {{ licenseNumber() }}
+          </p>
+        }
       </div>
     </div>
   `
 })
-export class NotFoundComponent {}
+export class NotFoundComponent {
+  private readonly tenantContext = inject(TenantContextService);
+
+  protected readonly activeAgency = this.tenantContext.activeTenant;
+  protected readonly licenseNumber = () => this.tenantContext.activeTenant()?.branding.licenseNumber ?? '—';
+  protected readonly recoveryLink = () => {
+    const slug = this.tenantContext.activeTenant()?.slug ?? DEFAULT_TENANT_SLUG;
+    return ['/t', slug];
+  };
+}

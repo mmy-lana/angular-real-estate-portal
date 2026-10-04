@@ -262,7 +262,12 @@ async function run() {
 
     await gotoAndSettle(page, '/404');
     const notFoundText = await page.evaluate(() => document.body.textContent ?? '');
-    assert('routing', '/404 renders explicit not-found state', notFoundText.includes('Location Not Found'));
+    assert(
+      'routing',
+      '/404 renders explicit not-found state',
+      /location not found/i.test(notFoundText) && notFoundText.includes('404'),
+      notFoundText.replace(/\s+/g, ' ').slice(0, 120)
+    );
 
     await gotoAndSettle(page, '/t/does-not-exist');
     await page
@@ -956,6 +961,221 @@ async function run() {
       switchedState.primary.toLowerCase() === '#111213' && switchedState.text.includes('Monolith'),
       JSON.stringify({ primary: switchedState.primary })
     );
+
+    // ------------------------------------------------------------ page assembly
+    console.log('\n[phase] catalog and detail assembly');
+
+    await page.setViewport(VIEWPORTS['w1024']);
+    await gotoAndSettle(page, '/t/atelier-living');
+    await page.waitForSelector('app-property-catalog [data-testid="catalog-grid"] app-property-card', { timeout: 20_000 });
+
+    const catalogAtelier = await page.evaluate(() => ({
+      cards: document.querySelectorAll('app-property-catalog app-property-card').length,
+      hero: Boolean(document.querySelector('app-property-catalog a[href*="/property/"]')),
+      heroTitle: document.querySelector('app-property-catalog h1')?.textContent?.trim() ?? '',
+      skeletons: document.querySelectorAll('[data-testid="catalog-skeletons"]').length,
+      emptyState: document.querySelectorAll('[data-testid="catalog-empty"]').length
+    }));
+    assert(
+      'catalog',
+      'catalog renders the tenant grid and featured hero',
+      catalogAtelier.cards >= 3 && catalogAtelier.hero && catalogAtelier.skeletons === 0 && catalogAtelier.emptyState === 0,
+      JSON.stringify(catalogAtelier)
+    );
+    assert('catalog', 'hero carries the agency wordmark', catalogAtelier.heroTitle.includes('Atelier Living'), catalogAtelier.heroTitle);
+
+    await gotoAndSettle(page, '/t/monolith-properties');
+    await page.waitForSelector('app-property-catalog app-property-card', { timeout: 20_000 });
+    const catalogMonolith = await page.evaluate(() => ({
+      cards: document.querySelectorAll('app-property-catalog app-property-card').length,
+      wordmark: document.querySelector('app-property-catalog h1')?.textContent?.trim() ?? ''
+    }));
+    assert(
+      'catalog',
+      'tenant isolation: monolith catalog differs from atelier',
+      catalogMonolith.cards !== catalogAtelier.cards && catalogMonolith.wordmark.includes('Monolith'),
+      JSON.stringify(catalogMonolith)
+    );
+
+    await gotoAndSettle(page, '/t/atelier-living');
+    await page.waitForSelector('app-property-catalog app-property-card', { timeout: 20_000 });
+    const totalCards = await page.$$eval('app-property-catalog app-property-card', (nodes) => nodes.length);
+    await page.evaluate(() => {
+      const facets = document.querySelectorAll('app-property-filter-bar [aria-pressed]');
+      facets[0]?.click();
+    });
+    await new Promise((done) => setTimeout(done, 300));
+    const filteredCards = await page.$$eval('app-property-catalog app-property-card', (nodes) => nodes.length);
+    assert(
+      'catalog',
+      'type facet narrows the listing grid',
+      filteredCards > 0 && filteredCards < totalCards,
+      `${totalCards} -> ${filteredCards}`
+    );
+
+    const searchInput = await page.$('#catalog-search');
+    await page.evaluate(() => {
+      const input = document.querySelector('#catalog-search');
+      input.value = 'zzzz-no-such-residence';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('search', { bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    await new Promise((done) => setTimeout(done, 400));
+    void searchInput;
+    const emptyState = await page.evaluate(() => ({
+      empty: document.querySelectorAll('[data-testid="catalog-empty"]').length,
+      cards: document.querySelectorAll('app-property-catalog app-property-card').length
+    }));
+    assert(
+      'catalog',
+      'empty result set renders a recovery state',
+      emptyState.empty === 1 && emptyState.cards === 0,
+      JSON.stringify(emptyState)
+    );
+
+    const resetButton = await page.$('[data-testid="catalog-empty"] ui-button button');
+    await clickElement(page, resetButton);
+    await page.waitForFunction(
+      () => document.querySelectorAll('app-property-catalog app-property-card').length > 0,
+      { timeout: 10_000 }
+    );
+    const restoredCards = await page.$$eval('app-property-catalog app-property-card', (nodes) => nodes.length);
+    assert('catalog', 'empty-state reset restores the full register', restoredCards === totalCards, `${restoredCards}`);
+
+    await gotoAndSettle(page, '/t/atelier-living/property/the-kura-residence');
+    await page.waitForSelector('app-property-detail app-architectural-gallery', { timeout: 20_000 });
+    const detailState = await page.evaluate(() => ({
+      title: document.querySelector('app-property-detail h1')?.textContent?.trim() ?? '',
+      gallery: document.querySelectorAll('app-architectural-gallery').length,
+      floorPlans: document.querySelectorAll('app-floor-plan-viewer').length,
+      planLevels: document.querySelectorAll('app-floor-plan-viewer [role="group"][aria-label="Floor level"] button').length,
+      mortgage: document.querySelectorAll('app-mortgage-calculator').length,
+      rail: document.querySelectorAll('app-property-detail aside').length,
+      specs: document.querySelectorAll('app-property-detail dl div').length,
+      amenityBadges: document.querySelectorAll('app-property-detail [class*="rounded-\\[var\\(--radius-brand\\)\\]"]').length,
+      mobileCta: document.querySelectorAll('[data-testid="mobile-cta"]').length
+    }));
+    assert(
+      'detail',
+      'detail page integrates gallery, plans and financing',
+      detailState.gallery === 1 && detailState.floorPlans === 1 && detailState.mortgage === 1 && detailState.planLevels >= 3,
+      JSON.stringify(detailState)
+    );
+    assert('detail', 'detail headline matches the residence', detailState.title === 'The Kura Residence', detailState.title);
+    assert('detail', 'inquiry rail renders on every viewport', detailState.rail === 1, JSON.stringify(detailState));
+
+    const crossTenantDetail = await page.evaluate(() => ({
+      url: location.pathname
+    }));
+    void crossTenantDetail;
+
+    await gotoAndSettle(page, '/t/monolith-properties/property/the-kura-residence');
+    await page
+      .waitForFunction(() => location.pathname === '/404', { timeout: 20_000 })
+      .catch(() => undefined);
+    const crossTenantUrl = page.url();
+    assert('detail', 'cross-tenant residence deep link is refused', crossTenantUrl.endsWith('/404'), crossTenantUrl);
+
+    // ------------------------------------------------------- responsive sweep
+    console.log('\n[phase] responsive sweep (360 - 1440)');
+
+    const responsiveIssues = [];
+    for (const path of ['/t/atelier-living', '/t/atelier-living/property/the-kura-residence', '/t/monolith-properties']) {
+      for (const [label, viewport] of Object.entries(VIEWPORTS)) {
+        await page.setViewport(viewport);
+        await gotoAndSettle(page, path);
+        await page.waitForSelector('app-property-catalog, app-property-detail', { timeout: 20_000 });
+        await new Promise((done) => setTimeout(done, 250));
+
+        const metrics = await page.evaluate(() => {
+          const root = document.documentElement;
+          const offenders = [];
+          const selector =
+            'button, a[href], input, select, textarea, [role="button"], [role="slider"], [tabindex]:not([tabindex="-1"])';
+          for (const element of document.querySelectorAll(selector)) {
+            const rect = element.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) continue;
+            const style = getComputedStyle(element);
+            if (style.visibility === 'hidden' || style.display === 'none') continue;
+            if (rect.height < 44 || rect.width < 44) {
+              offenders.push(`${element.tagName.toLowerCase()} ${Math.round(rect.width)}x${Math.round(rect.height)}`);
+            }
+          }
+          const cta = document.querySelector('[data-testid="mobile-cta"]');
+          return {
+            overflow: root.scrollWidth - root.clientWidth,
+            offenders: offenders.slice(0, 3),
+            ctaVisible: cta ? getComputedStyle(cta).display !== 'none' : false,
+            headingSize: Number.parseFloat(getComputedStyle(document.querySelector('h1')).fontSize)
+          };
+        });
+
+        const mobile = Number.parseInt(label.slice(1), 10) < 768;
+        if (metrics.overflow > 1) {
+          responsiveIssues.push(`${path} @${label}: horizontal overflow ${metrics.overflow}px`);
+        }
+        if (metrics.offenders.length > 0) {
+          responsiveIssues.push(`${path} @${label}: small targets ${metrics.offenders.join(', ')}`);
+        }
+        // The call-to-action bar belongs to the detail layout only.
+        if (path.includes('/property/') && metrics.ctaVisible !== mobile) {
+          responsiveIssues.push(`${path} @${label}: mobile CTA visibility ${metrics.ctaVisible}`);
+        }
+        if (metrics.headingSize < 22) {
+          responsiveIssues.push(`${path} @${label}: heading too small (${metrics.headingSize}px)`);
+        }
+      }
+    }
+    assert(
+      'responsive-sweep',
+      'all routes hold layout and touch targets from 360px to 1440px',
+      responsiveIssues.length === 0,
+      responsiveIssues.slice(0, 6).join(' ; ')
+    );
+
+    // ------------------------------------------------------- detail interaction
+    await page.setViewport(VIEWPORTS['w390']);
+    await gotoAndSettle(page, '/t/atelier-living/property/the-kura-residence');
+    await page.waitForSelector('[data-testid="mobile-cta"] ui-button button', { timeout: 20_000 });
+
+    const ctaBox = await page.evaluate(() => {
+      const cta = document.querySelector('[data-testid="mobile-cta"]');
+      const rect = cta.getBoundingClientRect();
+      const parentStyle = getComputedStyle(cta.parentElement);
+      return {
+        position: getComputedStyle(cta).position,
+        bottom: Math.round(rect.bottom),
+        innerHeight: window.innerHeight,
+        parentOverflow: parentStyle.overflow,
+        parentTransform: parentStyle.transform
+      };
+    });
+    assert(
+      'detail',
+      'mobile CTA is a fixed bottom node outside scroll containers',
+      ctaBox.position === 'fixed' &&
+        Math.abs(ctaBox.bottom - ctaBox.innerHeight) < 2 &&
+        ctaBox.parentOverflow === 'visible' &&
+      ctaBox.parentTransform === 'none',
+      JSON.stringify(ctaBox)
+    );
+
+    await clickElement(page, await page.$('[data-testid="mobile-cta"] ui-button button'));
+    await page.waitForSelector('app-schedule-tour-dialog [role="dialog"]', { timeout: 10_000 });
+    const dialogFromCta = await page.evaluate(() => Boolean(document.querySelector('app-schedule-tour-dialog [role="dialog"]')));
+    assert('detail', 'mobile CTA opens the tour dialog', dialogFromCta);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.querySelector('[role="dialog"]') === null, { timeout: 10_000 });
+
+    await page.setViewport(VIEWPORTS['w1024']);
+    await gotoAndSettle(page, '/t/atelier-living/property/the-kura-residence');
+    await page.waitForSelector('app-property-detail aside', { timeout: 20_000 });
+    const railSticky = await page.evaluate(() => {
+      const inner = document.querySelector('app-property-detail aside > div');
+      return inner ? getComputedStyle(inner).position : 'missing';
+    });
+    assert('detail', 'inquiry rail is sticky on desktop', railSticky === 'sticky', railSticky);
 
     // -------------------------------------------------------------- errors
     console.log('\n[phase] runtime health');

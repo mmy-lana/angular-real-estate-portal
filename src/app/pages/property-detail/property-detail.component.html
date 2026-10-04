@@ -1,0 +1,216 @@
+@if (property(); as subject) {
+  <div class="mx-auto max-w-7xl px-4 pb-32 pt-6 sm:px-6 md:pb-20 lg:px-8">
+    <nav aria-label="Breadcrumb" class="mb-6">
+      <a
+        [routerLink]="['/t', tenant().slug]"
+        class="inline-flex min-h-11 items-center gap-2 editorial-label text-(--color-brand-secondary) hover:text-(--color-brand-primary)"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+          <path d="M19 12H5M11 6l-6 6 6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        All residences
+      </a>
+    </nav>
+
+    <div class="grid gap-10 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] lg:gap-14">
+      <!-- Narrative column -->
+      <div class="flex min-w-0 flex-col gap-10">
+        <header class="flex flex-col gap-4">
+          <div class="flex flex-wrap items-center gap-2">
+            <ui-badge [label]="typeLabel()" tone="accent" />
+            <ui-badge [label]="statusLabel()" />
+          </div>
+          <h1 class="text-balance text-3xl leading-tight text-(--color-brand-primary) sm:text-4xl lg:text-5xl">
+            {{ subject.title }}
+          </h1>
+          <p class="max-w-2xl text-pretty text-sm leading-relaxed text-(--color-brand-secondary) sm:text-base">
+            {{ subject.tagline }}
+          </p>
+          <p class="text-xs text-(--color-brand-muted)">{{ fullAddress() }}</p>
+        </header>
+
+        <app-architectural-gallery
+          [media]="orderedMedia()"
+          [initialIndex]="galleryIndex()"
+          (indexChange)="galleryIndex.set($event)"
+        />
+
+        <section class="flex flex-col gap-4">
+          <h2 class="text-xl text-(--color-brand-primary)">Architectural record</h2>
+          <p class="max-w-2xl text-pretty text-sm leading-relaxed text-(--color-brand-secondary)">
+            {{ subject.description }}
+          </p>
+          <dl class="grid grid-cols-2 gap-x-6 gap-y-4 border-t border-(--color-brand-line) pt-6 sm:grid-cols-3">
+            @for (spec of specs(); track spec.label) {
+              <div class="min-w-0">
+                <dt class="editorial-label text-(--color-brand-muted)">{{ spec.label }}</dt>
+                <dd class="mt-1 truncate max-w-full text-sm text-(--color-brand-primary)">{{ spec.value }}</dd>
+              </div>
+            }
+          </dl>
+        </section>
+
+        @if (amenities().length > 0) {
+          <section class="flex flex-col gap-4">
+            <h2 class="text-xl text-(--color-brand-primary)">Provision</h2>
+            <ul class="flex flex-wrap gap-2">
+              @for (amenity of amenities(); track amenity) {
+                <li><ui-badge [label]="amenity" tone="outline" /></li>
+              }
+            </ul>
+          </section>
+        }
+
+        @if (floorPlanEnabled()) {
+          <section class="flex flex-col gap-4">
+            <h2 class="text-xl text-(--color-brand-primary)">Plans</h2>
+            <app-floor-plan-viewer [levels]="subject.floorPlans" />
+          </section>
+        }
+
+        @if (mortgageEnabled()) {
+          <section class="flex flex-col gap-4">
+            <h2 class="text-xl text-(--color-brand-primary)">Financing</h2>
+            <app-mortgage-calculator
+              [initialPrice]="subject.price"
+              [currency]="subject.currency"
+              (calculationUpdated)="payment.set($event)"
+            />
+            @if (payment(); as envelope) {
+              <p class="text-xs text-(--color-brand-secondary)">
+                Estimated monthly payment {{ formatPrice(envelope.totalMonthlyPayment, subject.currency) }} including
+                principal, interest, tax, insurance and dues.
+              </p>
+            }
+          </section>
+        }
+      </div>
+
+      <!-- Inquiry rail -->
+      <aside class="min-w-0">
+        <div class="flex flex-col gap-6 lg:sticky lg:top-28">
+          <div class="border border-(--color-brand-line) bg-(--color-brand-surface) p-5 sm:p-6">
+            <p class="editorial-label text-(--color-brand-secondary)">Asking price</p>
+            <p class="mt-2 text-3xl tabular-nums text-(--color-brand-primary)">
+              {{ formatPrice(subject.price, subject.currency) }}
+            </p>
+            <p class="mt-2 text-xs text-(--color-brand-secondary)">
+              {{ subject.address.neighborhood }}, {{ subject.address.city }}
+            </p>
+
+            <dl class="mt-5 grid grid-cols-3 gap-3 border-t border-(--color-brand-line) pt-4 text-center">
+              <div>
+                <dt class="editorial-label text-(--color-brand-muted)">Beds</dt>
+                <dd class="mt-1 text-sm tabular-nums text-(--color-brand-primary)">{{ subject.specs.bedrooms }}</dd>
+              </div>
+              <div>
+                <dt class="editorial-label text-(--color-brand-muted)">Baths</dt>
+                <dd class="mt-1 text-sm tabular-nums text-(--color-brand-primary)">{{ subject.specs.bathrooms }}</dd>
+              </div>
+              <div>
+                <dt class="editorial-label text-(--color-brand-muted)">Sq ft</dt>
+                <dd class="mt-1 text-sm tabular-nums text-(--color-brand-primary)">
+                  {{ subject.specs.interiorSquareFeet }}
+                </dd>
+              </div>
+            </dl>
+
+            @if (schedulingEnabled()) {
+              <ui-button
+                class="mt-5"
+                label="Schedule a private tour"
+                fullWidth
+                [disabled]="!agentCanSchedule()"
+                (clicked)="openTourDialog()"
+              />
+              @if (!agentCanSchedule()) {
+                <p class="mt-2 text-[11px] text-(--color-brand-secondary)">
+                  Tours are unavailable for this listing. Contact the agency directly.
+                </p>
+              }
+            }
+          </div>
+
+          <div class="border border-(--color-brand-line) p-5 sm:p-6">
+            <p class="editorial-label text-(--color-brand-secondary)">Listing agent</p>
+            <div class="mt-3 flex items-center gap-3">
+              @if (agent(); as representative) {
+                <img
+                  [src]="representative.avatarUrl"
+                  [alt]="representative.fullName"
+                  class="h-12 w-12 shrink-0 rounded-full object-cover"
+                  loading="lazy"
+                  decoding="async"
+                />
+              }
+              <div class="min-w-0">
+                <p class="truncate max-w-full text-sm text-(--color-brand-primary)">{{ listingAgentName() }}</p>
+                <p class="mt-0.5 truncate max-w-full text-[11px] text-(--color-brand-muted)">
+                  {{ agent()?.licenseCode ?? tenant().branding.licenseNumber }}
+                </p>
+              </div>
+            </div>
+            @if (agent(); as representative) {
+              <p class="mt-3 text-xs leading-relaxed text-(--color-brand-secondary) text-pretty">
+                {{ representative.bio }}
+              </p>
+            }
+            <div class="mt-4 flex flex-col gap-2">
+              <a
+                class="inline-flex min-h-11 items-center justify-center border border-(--color-brand-line) editorial-label text-(--color-brand-primary) hover:border-(--color-brand-primary)"
+                [href]="agentMailHref()"
+                >Email agent</a
+              >
+              <a
+                class="inline-flex min-h-11 items-center justify-center border border-(--color-brand-line) editorial-label text-(--color-brand-primary) hover:border-(--color-brand-primary)"
+                [href]="agentPhoneHref()"
+                >Call agency</a
+              >
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!--
+    Mobile call-to-action bar. It is a distinct, non-scrolling DOM node mounted
+    outside the narrative column so it never inherits a sticky or transform
+    context from the page's scroll containers.
+  -->
+  <div
+    class="fixed inset-x-0 bottom-0 z-40 border-t border-(--color-brand-line) bg-(--color-brand-surface)
+           px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 md:hidden"
+    data-testid="mobile-cta"
+  >
+    <div class="flex items-center justify-between gap-3">
+      <div class="min-w-0">
+        <p class="truncate max-w-full text-sm tabular-nums text-(--color-brand-primary)">
+          {{ formatPrice(subject.price, subject.currency) }}
+        </p>
+        <p class="truncate max-w-full editorial-label text-(--color-brand-muted)">{{ subject.title }}</p>
+      </div>
+      <ui-button
+        label="Schedule tour"
+        [disabled]="!agentCanSchedule()"
+        (clicked)="openTourDialog()"
+      />
+    </div>
+  </div>
+
+  @if (tourDialogOpen() && agent(); as representative) {
+    <app-schedule-tour-dialog
+      [isOpen]="tourDialogOpen()"
+      [property]="subject"
+      [agent]="representative"
+      [virtualToursEnabled]="featureFlags().enableVirtualTours"
+      (closed)="tourDialogOpen.set(false)"
+    />
+  }
+} @else {
+  <section class="mx-auto flex max-w-3xl flex-col items-center gap-4 px-4 py-24 text-center">
+    <span class="editorial-label text-(--color-brand-muted)">Residence unavailable</span>
+    <h1 class="text-2xl text-(--color-brand-primary)">This listing is no longer in the register.</h1>
+    <ui-button label="Back to residences" variant="outline" [routerLink]="['/t', tenant().slug]" />
+  </section>
+}
