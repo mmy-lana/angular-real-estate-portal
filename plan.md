@@ -737,30 +737,30 @@ export class TenantShellComponent {
 
 ### Phase 1: Types, Storage/API Client Config, and Base Utilities
 
-- [ ] **1.1 Multi-Tenant Core Interfaces**
+- [x] **1.1 Multi-Tenant Core Interfaces**
   - Implement full TypeScript contracts: `Tenant`, `Property`, `AgentProfile`, `TourBookingRequest`, and `MortgageCalculationInput`.
   - Validate zero-null ambiguity for tenant IDs across models.
 
-- [ ] **1.2 IndexedDB Database Schema Configuration & Seeding**
+- [x] **1.2 IndexedDB Database Schema Configuration & Seeding**
   - Implement storage service (`IndexedDbStorageService`) wrapping native IndexedDB with singleton initialization promise.
   - Setup object stores: `tenants` (index: `slug`), `properties` (indexes: `tenantId`, `status`, `type`, `price`), `agents` (index: `tenantId`), and `bookings` (indexes: `tenantId`, `propertyId`).
   - Seed dataset containing at least 2 distinct luxury architectural tenants: *Atelier Living* and *Monolith Real Estate*.
   - Contract mandate: When seeding `FloorPlanLevel` records into IndexedDB, pipe all `svgContent` values through `validateAndSanitizeSvgIngest` before executing the `store.add()` call.
 
-- [ ] **1.3 Tenant Context, Router Providers, and Resolver Architecture**
+- [x] **1.3 Tenant Context, Router Providers, and Resolver Architecture**
   - Configure root application providers in `app.config.ts` using `provideRouter(routes, withComponentInputBinding())` and `provideHttpClient()`.
   - Implement `tenantResolver` returning `ResolveFn<Tenant | RedirectCommand>`.
   - Implement `tenantActiveGuard` traversing route snapshots and returning `router.createUrlTree(['/404'])` on inactive tenants.
   - Define explicit `/404` route and `**` wildcard redirect in `app.routes.ts`.
 
-- [ ] **1.4 Currency, Unit, and Architectural Formatters**
+- [x] **1.4 Currency, Unit, and Architectural Formatters**
   - Create pure utility functions in `core/utils/`: `computeMonthlyMortgage`, `filterAndSortProperties`, `resolveCoverImage`, `calculateBoundedTransform`, `clampHotspotCoordinate`, and `validateAndSanitizeSvgIngest`.
 
 ---
 
 ### Phase 2: Design Foundation and Atomic UI Primitives
 
-- [ ] **2.1 Tailwind CSS Theme Tokens**
+- [x] **2.1 Tailwind CSS Theme Tokens**
   - Configure `@theme inline` block in `src/styles.css` to declare dynamic utility tokens without circular variable self-reference:
     ```css
     @theme inline {
@@ -777,20 +777,20 @@ export class TenantShellComponent {
   - Syntax convention mandate: all component templates must strictly use the Tailwind arbitrary variable syntax (e.g. `bg-(--color-brand-bg)`, `text-(--color-brand-text)`, `border-(--color-brand-accent)`). The deprecated shorthand syntax (`bg-brand-bg`) is strictly forbidden across all templates.
   - Mobile-first breakpoints: `360px`, `390px`, `430px`, `768px`, `1024px`, `1440px`.
 
-- [ ] **2.2 Atomic Component: `ButtonComponent`**
+- [x] **2.2 Atomic Component: `ButtonComponent`**
   - Implement standalone button with signal inputs `variant = input<'primary' | 'secondary' | 'outline' | 'ghost'>('primary')` and `loading = input<boolean>(false)`.
   - Accessible states: Focus visible outlines, tactile tap feedback, min 44x44px touch targets on mobile viewports.
 
-- [ ] **2.3 Atomic Component: `InputComponent` and `SelectComponent`**
+- [x] **2.3 Atomic Component: `InputComponent` and `SelectComponent`**
   - High-precision editorial inputs using signal inputs: `value = input<string>('')`, `valueChange = output<string>()`.
   - Uppercase tracking labels (`text-[10px] tracking-widest uppercase`).
   - Strict validation error states, accessible ARIA attributes (`aria-invalid`, `aria-describedby`).
 
-- [ ] **2.4 Atomic Component: `RangeSliderComponent`**
+- [x] **2.4 Atomic Component: `RangeSliderComponent`**
   - Dual-thumb or single-thumb touch-ready slider using `rangeChange = output<[number, number]>()`.
   - Encapsulated touch isolation: declare `.slider-track { touch-action: none; }` inside `range-slider.component.css` targeting only the inner track container `div`. Never bind `touch-action` on `:host`.
 
-- [ ] **2.5 Atomic Component: `SheetModalComponent`**
+- [x] **2.5 Atomic Component: `SheetModalComponent`**
   - Responsive dialog: Bottom-sheet behavior on mobile (`< 768px`).
   - Listen to `window.visualViewport.addEventListener('resize', ...)` and update dynamic property `--sheet-max-height: ${visualViewport.height * 0.85}px` on the sheet inner container, preventing iOS Safari keyboard expansion collapse.
   - Native keyboard escape handling and focus trapping.
@@ -799,75 +799,75 @@ export class TenantShellComponent {
 
 ### Phase 3: Compound Molecules and Feature Components
 
-- [ ] **3.1 Editorial Architectural Navigation (`TenantNavComponent`)**
+- [x] **3.1 Editorial Architectural Navigation (`TenantNavComponent`)**
   - Agency wordmark and branding fetched from `tenant()` input signal.
   - Desktop: Minimal horizontal links with inline contact hotline and tenant selector switch.
   - Mobile: Fixed top bar with bottom-sheet hamburger drawer menu.
 
-- [ ] **3.2 Property Card Component (`PropertyCardComponent`)**
+- [x] **3.2 Property Card Component (`PropertyCardComponent`)**
   - Aspect ratio 4:3 or 16:10 for photography with resolved single cover image via `resolveCoverImage`.
   - Specs row (beds · baths · sqft) styled with `truncate max-w-full`. Architect credit rendered on dedicated secondary line on desktop, hidden on viewports `< 390px` to prevent overflow.
   - Output binding: `selected = output<string>()`. Actions always touch-accessible.
 
-- [ ] **3.3 Architectural Gallery (`ArchitecturalGalleryComponent`)**
+- [x] **3.3 Architectural Gallery (`ArchitecturalGalleryComponent`)**
   - High-resolution imagery carousel. Lightbox rendered directly to `document.body` via Angular CDK `Overlay` portal to prevent clipping from parent CSS transforms on iOS Safari.
   - Horizontal drag and touch swipe gestures via pointer events.
   - Thumbnail track navigation with current slide index indicator.
 
-- [ ] **3.4 Search and Filter Bar (`PropertyFilterBarComponent`)**
+- [x] **3.4 Search and Filter Bar (`PropertyFilterBarComponent`)**
   - Sticky sub-nav header with quick filters: Property Type, Price Bounds, Bedroom count.
   - Trigger for mobile bottom-sheet filter panel (`PropertyFilterDrawerComponent`).
   - Reactive Signal outputs bound to catalog state.
 
-- [ ] **3.5 Tenant Footer (`TenantFooterComponent`)**
+- [x] **3.5 Tenant Footer (`TenantFooterComponent`)**
   - Multi-column footer displaying agency licensing, broker credentials, address, and tenant switch utility.
 
 ---
 
 ### Phase 4: Domain Logic, Reactive State, and Specialized APIs
 
-- [ ] **4.1 Mortgage Calculator Feature (`MortgageCalculatorComponent`)**
+- [x] **4.1 Mortgage Calculator Feature (`MortgageCalculatorComponent`)**
   - Interactive pricing breakdown with real-time recalculation using `computeMonthlyMortgage()`.
   - SVG donut chart visualizer showing ratio of Principal/Interest vs. Property Tax vs. Insurance vs. HOA.
   - Preset defaults populated automatically from current property listing price.
 
-- [ ] **4.2 Interactive Floor Plan Viewer (`FloorPlanViewerComponent`)**
+- [x] **4.2 Interactive Floor Plan Viewer (`FloorPlanViewerComponent`)**
   - Render floor plans via inline SVG bound to `[innerHTML]="trustedSvg()"`. Compute `trustedSvg` via `this.sanitizer.bypassSecurityTrustHtml(this.level().svgContent)`. All SVG content stored in IndexedDB is pre-sanitized through `validateAndSanitizeSvgIngest` at ingest/seed time.
   - Pan and pinch-to-zoom engine using `calculateBoundedTransform`.
   - Hotspot coordinates strictly validated and clamped via `clampHotspotCoordinate` within `[0.0, 1.0]`.
   - Level switcher (e.g., "Ground Floor", "Upper Terrace", "Subterranean Cellar").
 
-- [ ] **4.3 Schedule Tour Feature (`ScheduleTourDialogComponent`)**
+- [x] **4.3 Schedule Tour Feature (`ScheduleTourDialogComponent`)**
   - Interactive appointment booking workflow.
   - Validation check in `TourBookingService.createBooking()` to verify `listingAgent.isActive === true` and `listingAgent.tenantId === booking.tenantId` before persisting.
   - Lead capture form (Name, Email, Phone, Tour Type) with automatic validation.
   - Persists directly into IndexedDB `bookings` store with tenant isolation and denormalized `agentIsActive: true`.
 
-- [ ] **4.4 Tenant Switcher Utility**
+- [x] **4.4 Tenant Switcher Utility**
   - Floating minimal selector allowing instantaneous switching between demo tenants to verify context isolation, branding, and listings.
 
 ---
 
 ### Phase 5: Complete Page Assembly and Responsive Shell
 
-- [ ] **5.1 Root Tenant Shell Layout (`TenantShellComponent`)**
+- [x] **5.1 Root Tenant Shell Layout (`TenantShellComponent`)**
   - Coordinate header, dynamic main container, and footer.
   - Apply tenant CSS theme tokens inside `effect()` without signal write collisions.
 
-- [ ] **5.2 Property Catalog View (`PropertyCatalogComponent`)**
+- [x] **5.2 Property Catalog View (`PropertyCatalogComponent`)**
   - Explicit component input binding contract: `readonly tenant = input.required<Tenant>();` bound directly from parent route resolve data via `withComponentInputBinding()`.
   - Hero section highlighting tenant agency statement and lead property.
   - Editorial grid for listings with `@for (property of filteredProperties(); track property.id)` to guarantee DOM node reuse and avoid frame drops.
   - Empty state with clear filter reset triggers.
   - Skeleton loaders matching architectural image aspect ratios during state transitions.
 
-- [ ] **5.3 Property Detail View (`PropertyDetailComponent`)**
+- [x] **5.3 Property Detail View (`PropertyDetailComponent`)**
   - Explicit component input binding contract: `readonly tenant = input.required<Tenant>();` and `readonly propertySlug = input.required<string>();` bound directly from parent resolve data and route params via `withComponentInputBinding()`.
   - Split layout on desktop (`>= 768px`): Left-side expansive imagery narrative and floor plans; sticky right-side inquiry rail.
   - Stacked mobile layout (`< 768px`): Bottom fixed CTA bar mounted as a distinct DOM node (`fixed bottom-0 inset-x-0 z-40 bg-(--color-brand-surface) border-t p-4`) outside parent scroll containers to prevent sticky context collapse.
   - Full integration of `ArchitecturalGalleryComponent`, `FloorPlanViewerComponent`, and `MortgageCalculatorComponent`.
 
-- [ ] **5.4 Comprehensive Viewport and Touch Verification**
+- [x] **5.4 Comprehensive Viewport and Touch Verification**
   - Validate layout behavior at 360px (small devices), 390px (standard mobile), 430px (large mobile), 768px (tablet portrait), and 1024px+ (desktop).
   - Guarantee all interactive elements have 44px minimum touch targets and that no data or actions are locked behind hover states.
 
