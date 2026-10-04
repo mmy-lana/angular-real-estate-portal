@@ -1,0 +1,106 @@
+<article
+  class="group relative flex h-full flex-col border border-(--color-brand-line) bg-(--color-brand-surface)
+         transition-colors duration-200 hover:border-(--color-brand-primary)"
+>
+  <div class="relative aspect-[4/3] w-full overflow-hidden bg-(--color-brand-bg)">
+    @if (coverImage(); as cover) {
+      <img
+        [src]="cover.url"
+        [alt]="cover.caption || property().title"
+        class="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.02]"
+        loading="lazy"
+        decoding="async"
+      />
+    } @else {
+      <div class="flex h-full w-full flex-col items-center justify-center gap-2 text-(--color-brand-muted)">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+          <rect x="3" y="5" width="18" height="14" stroke="currentColor" stroke-width="1.2" />
+          <path d="m3 16 5-4 4 3 3-2 6 5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+        </svg>
+        <span class="editorial-label">Imagery pending</span>
+      </div>
+    }
+
+    <div class="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3">
+      <span
+        class="editorial-label rounded-[var(--radius-brand)] px-2 py-1"
+        [class.bg-(--color-brand-primary)]="property().featured"
+        [class.text-(--color-brand-inverse)]="property().featured"
+        [class.bg-(--color-brand-surface)]="!property().featured"
+        [class.text-(--color-brand-secondary)]="!property().featured"
+      >
+        {{ property().featured ? 'Featured' : statusLabel() }}
+      </span>
+      @if (mediaCount() > 0) {
+        <span class="editorial-label rounded-[var(--radius-brand)] bg-(--color-brand-primary)/70 px-2 py-1 text-(--color-brand-inverse)">
+          {{ mediaCount() }} photos
+        </span>
+      }
+    </div>
+  </div>
+
+  <div class="flex flex-1 flex-col gap-3 p-4 sm:p-5">
+    <div class="min-w-0">
+      <p class="editorial-label text-(--color-brand-secondary) truncate max-w-full">{{ property().address.neighborhood }}</p>
+      <h3 class="mt-1 text-lg sm:text-xl editorial-serif text-(--color-brand-primary) truncate max-w-full">
+        {{ property().title }}
+      </h3>
+      <p class="mt-1 text-xs text-(--color-brand-secondary) text-pretty line-clamp-2">{{ property().tagline }}</p>
+    </div>
+
+    <p class="editorial-serif text-xl sm:text-2xl text-(--color-brand-primary) tabular-nums">
+      {{ formattedPrice() }}
+    </p>
+
+    <ul class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-(--color-brand-secondary)">
+      <li class="truncate max-w-full">{{ property().specs.bedrooms }} beds</li>
+      <li aria-hidden="true" class="text-(--color-brand-line)">·</li>
+      <li class="truncate max-w-full">{{ property().specs.bathrooms }} baths</li>
+      <li aria-hidden="true" class="text-(--color-brand-line)">·</li>
+      <li class="truncate max-w-full tabular-nums">{{ interiorArea() }}</li>
+    </ul>
+
+    <!-- Architect credit is dropped below 390px so the specs row never wraps awkwardly. -->
+    <p class="hidden min-[390px]:block text-[11px] text-(--color-brand-muted) truncate max-w-full">
+      @if (property().specs.architectName; as architect) {
+        Architect: {{ architect }}
+      } @else {
+        Architect: unattributed
+      }
+    </p>
+
+    <div class="mt-auto pt-2">
+      @if (linkTarget(); as target) {
+        <a
+          [routerLink]="target"
+          (click)="onSelect()"
+          class="w-full min-h-11 inline-flex items-center justify-center gap-2 editorial-label
+                 border border-(--color-brand-primary) text-(--color-brand-primary)
+                 hover:bg-(--color-brand-primary) hover:text-(--color-brand-inverse)
+                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-brand-accent)
+                 transition-colors duration-150"
+        >
+          View residence
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+            <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </a>
+      } @else {
+        <button
+          type="button"
+          class="w-full min-h-11 inline-flex items-center justify-center gap-2 editorial-label
+                 border border-(--color-brand-primary) text-(--color-brand-primary)
+                 hover:bg-(--color-brand-primary) hover:text-(--color-brand-inverse)
+                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-brand-accent)
+                 transition-colors duration-150"
+          (click)="onSelect()"
+        >
+          View residence
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+            <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+      }
+    </div>
+  </div>
+</article>

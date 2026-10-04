@@ -1,0 +1,96 @@
+<ui-sheet-modal
+  [isOpen]="isOpen()"
+  title="Refine portfolio"
+  description="Narrow the current residences by type, location, size and status."
+  (closed)="closed.emit()"
+>
+  <div class="flex flex-col gap-6">
+    <fieldset class="min-w-0">
+      <legend class="editorial-label mb-2 text-(--color-brand-secondary)">Property type</legend>
+      <div class="flex flex-wrap gap-2">
+        @for (type of typeOrder; track type) {
+          <button
+            type="button"
+            class="inline-flex min-h-11 items-center border px-3 text-[11px] uppercase tracking-[0.18em] transition-colors"
+            [class.border-(--color-brand-primary)]="draft().propertyTypes.includes(type)"
+            [class.bg-(--color-brand-primary)]="draft().propertyTypes.includes(type)"
+            [class.text-(--color-brand-inverse)]="draft().propertyTypes.includes(type)"
+            [class.border-(--color-brand-line)]="!draft().propertyTypes.includes(type)"
+            [class.text-(--color-brand-secondary)]="!draft().propertyTypes.includes(type)"
+            [attr.aria-pressed]="draft().propertyTypes.includes(type)"
+            (click)="toggleType(type)"
+          >
+            {{ typeLabels[type] }}
+          </button>
+        }
+      </div>
+    </fieldset>
+
+    <div class="min-w-0">
+      <ui-range-slider
+        label="Price envelope"
+        [min]="priceBounds().min"
+        [max]="priceBounds().max"
+        [step]="priceStep"
+        [currentMin]="priceRange()[0]"
+        [currentMax]="priceRange()[1]"
+        [formatValue]="formatPrice"
+        (rangeChange)="onPriceChange($event)"
+      />
+    </div>
+
+    <ui-select
+      label="Location"
+      [options]="neighborhoodOptions()"
+      [value]="draft().neighborhood ?? ''"
+      (valueChange)="onNeighborhoodChange($event)"
+    />
+
+    <div class="grid gap-4 sm:grid-cols-3">
+      <ui-select
+        label="Bedrooms"
+        [options]="bedroomOptions"
+        [value]="draft().minBedrooms?.toString() ?? ''"
+        (valueChange)="onBedroomsChange($event)"
+      />
+      <ui-select
+        label="Bathrooms"
+        [options]="bathroomOptions"
+        [value]="draft().minBathrooms?.toString() ?? ''"
+        (valueChange)="onBathroomsChange($event)"
+      />
+      <ui-select
+        label="Interior area"
+        [options]="maxSquareFeetOptions()"
+        [value]="draft().minSquareFeet?.toString() ?? ''"
+        (valueChange)="onSquareFeetChange($event)"
+      />
+    </div>
+
+    <fieldset class="min-w-0">
+      <legend class="editorial-label mb-2 text-(--color-brand-secondary)">Status</legend>
+      <div class="flex flex-wrap gap-2">
+        @for (status of statusOrder; track status) {
+          <button
+            type="button"
+            class="inline-flex min-h-11 items-center border px-3 text-[11px] uppercase tracking-[0.18em] transition-colors"
+            [class.border-(--color-brand-primary)]="draft().status === status"
+            [class.bg-(--color-brand-primary)]="draft().status === status"
+            [class.text-(--color-brand-inverse)]="draft().status === status"
+            [class.border-(--color-brand-line)]="draft().status !== status"
+            [class.text-(--color-brand-secondary)]="draft().status !== status"
+            [attr.aria-pressed]="draft().status === status"
+            (click)="toggleStatus(status)"
+          >
+            {{ statusLabels[status] }}
+          </button>
+        }
+      </div>
+    </fieldset>
+  </div>
+
+  <div sheetFooter class="flex gap-3">
+    <ui-button label="Reset" variant="outline" fullWidth (clicked)="resetDraft()" />
+    <ui-button label="Apply filters" fullWidth (clicked)="apply()" />
+  </div>
+</ui-sheet-modal>

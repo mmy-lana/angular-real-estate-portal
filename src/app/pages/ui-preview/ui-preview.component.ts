@@ -8,7 +8,17 @@ import { RangeSliderComponent } from '../../shared/ui-primitives/range-slider/ra
 import { SelectComponent, SelectOption } from '../../shared/ui-primitives/select/select.component';
 import { SheetModalComponent } from '../../shared/ui-primitives/sheet-modal/sheet-modal.component';
 import { TenantContextService } from '../../core/services/tenant-context.service';
+import { PropertyDataService } from '../../core/services/property-data.service';
+import { PropertyFilterCriteria, PropertyMedia } from '../../core/models';
 import { formatCompactCurrency } from '../../core/utils/format.util';
+import { createDefaultFilterCriteria } from '../../core/utils/property-filter.util';
+import { PropertyCardComponent } from '../../shared/compound/property-card/property-card.component';
+import { ArchitecturalGalleryComponent } from '../../shared/compound/architectural-gallery/architectural-gallery.component';
+import { PropertyFilterBarComponent } from '../../features/property-filter/property-filter-bar.component';
+
+const PREVIEW_TENANT_ID = 't-1001-atelier';
+
+type PreviewProperty = import('../../core/models').Property;
 
 const SORT_OPTIONS: SelectOption[] = [
   { value: 'date_desc', label: 'Recently listed' },
@@ -31,6 +41,9 @@ const SORT_OPTIONS: SelectOption[] = [
   imports: [
     DecimalPipe,
     RouterLink,
+    PropertyCardComponent,
+    ArchitecturalGalleryComponent,
+    PropertyFilterBarComponent,
     BadgeComponent,
     ButtonComponent,
     InputComponent,
@@ -148,6 +161,40 @@ const SORT_OPTIONS: SelectOption[] = [
             <ui-button label="Open right drawer" variant="outline" (clicked)="openSheet('right')" />
           </div>
         </section>
+
+        <section class="flex flex-col gap-4">
+          <h2 class="text-2xl editorial-serif text-(--color-brand-primary)">Property card</h2>
+          <div class="grid gap-5 sm:grid-cols-2">
+            @for (entry of previewProperties(); track entry.id) {
+              <app-property-card [property]="entry" [currency]="entry.currency" (selected)="onPropertySelected($event)" />
+            }
+          </div>
+          <p class="text-xs text-(--color-brand-secondary)" data-testid="card-log">
+            Selected residence: {{ selectedPropertySlug() }}
+          </p>
+        </section>
+
+        <section class="flex flex-col gap-4">
+          <h2 class="text-2xl editorial-serif text-(--color-brand-primary)">Architectural gallery</h2>
+          <app-architectural-gallery [media]="galleryMedia()" (indexChange)="galleryIndex.set($event)" />
+          <p class="text-xs text-(--color-brand-secondary)" data-testid="gallery-log">
+            Active slide: {{ galleryIndex() + 1 }}
+          </p>
+        </section>
+
+        <section class="flex flex-col gap-4">
+          <h2 class="text-2xl editorial-serif text-(--color-brand-primary)">Filter bar</h2>
+          <app-property-filter-bar
+            [activeFilters]="previewCriteria()"
+            [properties]="previewProperties()"
+            [resultCount]="previewProperties().length"
+            (filterChanged)="previewCriteria.set($event)"
+          />
+          <p class="text-xs text-(--color-brand-secondary)" data-testid="filter-log">
+            Active types: {{ previewCriteria().propertyTypes.length }} · sort:
+            {{ previewCriteria().sortBy }}
+          </p>
+        </section>
       </main>
 
       <ui-sheet-modal
@@ -174,6 +221,13 @@ const SORT_OPTIONS: SelectOption[] = [
 })
 export class UiPreviewComponent {
   private readonly tenantContext = inject(TenantContextService);
+  private readonly propertyData = inject(PropertyDataService);
+
+  protected readonly previewProperties = signal<PreviewProperty[]>([]);
+  protected readonly previewCriteria = signal<PropertyFilterCriteria>(createDefaultFilterCriteria());
+  protected readonly selectedPropertySlug = signal('none');
+  protected readonly galleryIndex = signal(0);
+  protected readonly galleryMedia = signal<PropertyMedia[]>([]);
 
   protected readonly sortOptions = SORT_OPTIONS;
   protected readonly fullName = signal('');
@@ -204,6 +258,17 @@ export class UiPreviewComponent {
   );
 
   protected readonly formatPrice = (value: number): string => formatCompactCurrency(value, 'USD');
+
+  constructor() {
+    void this.propertyData.loadPropertiesForTenant(PREVIEW_TENANT_ID).then((properties) => {
+      this.previewProperties.set(properties);
+      this.galleryMedia.set(properties.flatMap((property) => property.media).slice(0, 3));
+    });
+  }
+
+  protected onPropertySelected(slug: string): void {
+    this.selectedPropertySlug.set(slug);
+  }
 
   protected onButtonClick(variant: string): void {
     this.lastButtonActivation.set(`${variant}@${Date.now()}`);

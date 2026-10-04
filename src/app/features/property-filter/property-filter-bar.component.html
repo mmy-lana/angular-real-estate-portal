@@ -1,0 +1,131 @@
+<div
+  class="sticky top-16 lg:top-20 z-20 border-b border-(--color-brand-line) bg-(--color-brand-bg)/95 backdrop-blur-sm"
+>
+  <div class="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:px-6 lg:px-8">
+    <div class="flex items-center gap-3">
+      <div class="relative flex-1 min-w-0">
+        <label for="catalog-search" class="sr-only">Search residences</label>
+        <svg
+          class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-(--color-brand-muted)"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <circle cx="11" cy="11" r="6" stroke="currentColor" stroke-width="1.5" />
+          <path d="m16 16 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        </svg>
+        <input
+          id="catalog-search"
+          type="search"
+          inputmode="search"
+          autocomplete="off"
+          placeholder="Search address, architect or amenity"
+          class="min-h-11 w-full rounded-[var(--radius-brand)] border border-(--color-brand-line) bg-transparent
+                 pl-9 pr-3 text-sm text-(--color-brand-text) placeholder:text-(--color-brand-muted)
+                 focus:border-(--color-brand-primary) focus:outline-none
+                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-brand-accent)"
+          [value]="searchDraft()"
+          (input)="onSearchInput($any($event.target).value)"
+          (keydown.enter)="onSearchCommit()"
+          (search)="onSearchCommit()"
+        />
+      </div>
+
+      <button
+        type="button"
+        class="relative inline-flex min-h-11 shrink-0 items-center gap-2 border border-(--color-brand-line)
+               px-3 editorial-label text-(--color-brand-primary) md:hidden
+               focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-brand-accent)"
+        aria-label="Open filters"
+        (click)="openDrawer()"
+      >
+        Filters
+        @if (hasActiveFilters()) {
+          <span class="h-1.5 w-1.5 rounded-full bg-(--color-brand-accent)" aria-hidden="true"></span>
+        }
+      </button>
+
+      <p class="hidden shrink-0 text-xs tabular-nums text-(--color-brand-secondary) md:block" aria-live="polite">
+        {{ resultCount() }} {{ resultCount() === 1 ? 'residence' : 'residences' }}
+      </p>
+    </div>
+
+    <!-- Desktop facets -->
+    <div class="hidden items-center gap-2 overflow-x-auto md:flex">
+      <div class="flex items-center gap-2" role="group" aria-label="Property type">
+        @for (entry of typeEntries; track entry.value) {
+          <button
+            type="button"
+            class="inline-flex min-h-11 shrink-0 items-center border px-3 editorial-label transition-colors"
+            [class.border-(--color-brand-primary)]="criteria().propertyTypes.includes(entry.value)"
+            [class.bg-(--color-brand-primary)]="criteria().propertyTypes.includes(entry.value)"
+            [class.text-(--color-brand-inverse)]="criteria().propertyTypes.includes(entry.value)"
+            [class.border-(--color-brand-line)]="!criteria().propertyTypes.includes(entry.value)"
+            [class.text-(--color-brand-secondary)]="!criteria().propertyTypes.includes(entry.value)"
+            [attr.aria-pressed]="criteria().propertyTypes.includes(entry.value)"
+            (click)="toggleType(entry.value)"
+          >
+            {{ typeLabels[entry.value] }}
+          </button>
+        }
+      </div>
+
+      <div class="ml-auto flex shrink-0 items-center gap-2">
+        <div class="w-40 hidden">
+          <ui-select
+            label="Bedrooms"
+            [options]="bedroomOptions"
+            [value]="criteria().minBedrooms?.toString() ?? ''"
+            (valueChange)="onBedroomsChange($event)"
+          />
+        </div>
+        <div class="w-48">
+          <ui-select
+            label="Sort"
+            [options]="sortOptions"
+            [value]="criteria().sortBy"
+            (valueChange)="onSortChange($event)"
+          />
+        </div>
+        @if (hasActiveFilters()) {
+          <button
+            type="button"
+            class="inline-flex min-h-11 items-center border border-transparent px-3 editorial-label
+                   text-(--color-brand-secondary) hover:text-(--color-brand-primary)"
+            (click)="reset()"
+          >
+            Clear
+          </button>
+        }
+      </div>
+    </div>
+  </div>
+
+  @if (hasActiveFilters()) {
+    <div class="border-t border-(--color-brand-line) bg-(--color-brand-surface)">
+      <div class="mx-auto flex max-w-7xl items-center gap-2 overflow-x-auto px-4 py-2 sm:px-6 lg:px-8">
+        <span class="editorial-label shrink-0 text-(--color-brand-muted)">Active</span>
+        @if (activeTypeLabels()) {
+          <ui-badge [label]="activeTypeLabels()" tone="accent" />
+        }
+        @if (criteria().minBedrooms !== undefined) {
+          <ui-badge [label]="criteria().minBedrooms + '+ beds'" />
+        }
+        @if ((criteria().searchQuery ?? '').trim() !== '') {
+          <ui-badge [label]="'“' + criteria().searchQuery + '”'" />
+        }
+      </div>
+    </div>
+  }
+</div>
+
+<app-property-filter-drawer
+  [isOpen]="drawerOpen()"
+  [activeFilters]="criteria()"
+  [properties]="properties()"
+  (closed)="closeDrawer()"
+  (criteriaApplied)="onDrawerCriteria($event)"
+/>

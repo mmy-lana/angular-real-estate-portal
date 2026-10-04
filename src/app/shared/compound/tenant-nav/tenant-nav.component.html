@@ -1,0 +1,143 @@
+<header
+  class="sticky top-0 z-30 border-b border-(--color-brand-line) bg-(--color-brand-surface)/95 backdrop-blur-sm"
+>
+  <div class="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:h-20 lg:px-8">
+    <a
+      [routerLink]="catalogLink()"
+      class="flex min-h-11 min-w-0 flex-col justify-center"
+      [attr.aria-label]="tenant().branding.agencyName + ' — residences'"
+    >
+      <span class="editorial-serif text-xl leading-tight text-(--color-brand-primary) truncate max-w-[16ch] sm:text-2xl">
+        {{ tenant().branding.agencyName }}
+      </span>
+      <span class="editorial-label mt-0.5 hidden text-(--color-brand-secondary) truncate max-w-[28ch] sm:block">
+        {{ tenant().branding.tagline }}
+      </span>
+    </a>
+
+    <!-- Desktop rail -->
+    <div class="hidden items-center gap-6 md:flex">
+      <nav aria-label="Primary" class="flex items-center gap-1">
+        <a
+          [routerLink]="catalogLink()"
+          class="inline-flex min-h-11 items-center px-3 editorial-label text-(--color-brand-secondary)
+                 hover:text-(--color-brand-primary) hover:border hover:border-(--color-brand-line)"
+          routerLinkActive="!text-(--color-brand-primary) !border-(--color-brand-line)"
+          [routerLinkActiveOptions]="{ exact: true }"
+        >
+          Residences
+        </a>
+      </nav>
+
+      <div class="flex flex-col items-end text-right">
+        <span class="editorial-label text-(--color-brand-muted)">Direct inquiries</span>
+        <a
+          [href]="phoneHref()"
+          class="inline-flex min-h-11 items-center text-sm text-(--color-brand-primary) hover:underline"
+        >
+          {{ tenant().branding.contactPhone }}
+        </a>
+      </div>
+
+      @if (availableTenants().length > 0) {
+        <nav
+          aria-label="Tenant switcher"
+          class="flex items-center border border-(--color-brand-line) p-1"
+        >
+          @for (option of availableTenants(); track option.id) {
+            <a
+              [routerLink]="['/t', option.slug]"
+              class="inline-flex min-h-11 items-center px-3 editorial-label"
+              [class.text-(--color-brand-primary)]="isCurrent(option.slug)"
+              [class.text-(--color-brand-muted)]="!isCurrent(option.slug)"
+              [class.bg-(--color-brand-bg)]="isCurrent(option.slug)"
+              [attr.aria-current]="isCurrent(option.slug) ? 'page' : null"
+              >{{ option.branding.agencyName }}</a
+            >
+          }
+        </nav>
+      }
+    </div>
+
+    <!-- Mobile controls -->
+    <div class="flex items-center gap-2 md:hidden">
+      <a
+        [href]="phoneHref()"
+        class="inline-flex h-11 w-11 items-center justify-center border border-(--color-brand-line) text-(--color-brand-primary)"
+        aria-label="Call the agency"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+          <path
+            d="M4 5c0-.6.4-1 1-1h3l2 4-2 1a11 11 0 0 0 5 5l1-2 4 2v3c0 .6-.4 1-1 1A14 14 0 0 1 4 5Z"
+            stroke="currentColor"
+            stroke-width="1.4"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </a>
+      <button
+        type="button"
+        class="inline-flex h-11 w-11 items-center justify-center border border-(--color-brand-line) text-(--color-brand-primary)
+               focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-brand-accent)"
+        aria-label="Open navigation menu"
+        [attr.aria-expanded]="menuOpen()"
+        aria-controls="tenant-nav-sheet"
+        (click)="toggleMenu()"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+          <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+        </svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<ui-sheet-modal
+  [isOpen]="menuOpen()"
+  title="Navigation"
+  [description]="tenant().branding.tagline"
+  (closed)="closeMenu()"
+>
+  <nav aria-label="Mobile primary" class="flex flex-col">
+    <a
+      [routerLink]="catalogLink()"
+      class="inline-flex min-h-12 items-center border-b border-(--color-brand-line) text-sm text-(--color-brand-primary)"
+      (click)="closeMenu()"
+      >Residences</a
+    >
+    <a
+      [href]="phoneHref()"
+      class="inline-flex min-h-12 items-center border-b border-(--color-brand-line) text-sm text-(--color-brand-primary)"
+      >{{ tenant().branding.contactPhone }}</a
+    >
+    <a
+      [href]="mailHref()"
+      class="inline-flex min-h-12 items-center border-b border-(--color-brand-line) text-sm text-(--color-brand-primary)"
+      >{{ tenant().branding.contactEmail }}</a
+    >
+  </nav>
+
+  @if (availableTenants().length > 0) {
+    <p class="editorial-label mt-6 mb-2 text-(--color-brand-muted)">Switch agency</p>
+    <div class="flex flex-col">
+      @for (option of availableTenants(); track option.id) {
+        <a
+          [routerLink]="['/t', option.slug]"
+          class="inline-flex min-h-12 items-center justify-between border-b border-(--color-brand-line) text-sm"
+          [class.text-(--color-brand-primary)]="isCurrent(option.slug)"
+          [class.text-(--color-brand-muted)]="!isCurrent(option.slug)"
+          [attr.aria-current]="isCurrent(option.slug) ? 'page' : null"
+          (click)="closeMenu()"
+        >
+          {{ option.branding.agencyName }}
+          <span class="editorial-label">{{ option.branding.tagline }}</span>
+        </a>
+      }
+    </div>
+  }
+
+  <div sheetFooter class="flex flex-col gap-2 text-[11px] text-(--color-brand-muted)">
+    <span>{{ tenant().branding.legalEntityName }}</span>
+    <span>{{ tenant().branding.licenseNumber }}</span>
+  </div>
+</ui-sheet-modal>
