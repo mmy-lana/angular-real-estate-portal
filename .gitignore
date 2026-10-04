@@ -5,3 +5,5 @@ dist
 *.local
 .DS_Store
 repomix-output.xml
+.verify-profile
+.pnpm-store

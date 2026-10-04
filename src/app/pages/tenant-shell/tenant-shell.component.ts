@@ -25,7 +25,8 @@ export class TenantShellComponent {
 
   constructor() {
     effect(() => {
-      this.themeService.applyTheme(this.tenant().branding.themeTokens);
+      const tenant = this.tenant();
+      this.themeService.applyBranding(tenant.branding.faviconUrl, tenant.branding.themeTokens);
     });
   }
 }
