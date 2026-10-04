@@ -114,6 +114,11 @@ function attachErrorCollectors(page, sink) {
     }
   });
   page.on('pageerror', (error) => sink.pageErrors.push(error.message));
+  page.on('response', (response) => {
+    if (response.status() >= 400) {
+      sink.requestFailures.push(`${response.status()} ${response.url()}`);
+    }
+  });
 }
 
 /**
@@ -737,10 +742,226 @@ async function run() {
     );
     assert('molecules', 'filter drawer dismisses with escape', true);
 
+    // ----------------------------------------------------------- features
+    console.log('\n[phase] domain features');
+
+    await gotoAndSettle(page, '/preview/components');
+    await page.waitForSelector('app-mortgage-calculator', { timeout: 20_000 });
+
+    const mortgageBefore = await page.$eval('[data-testid="monthly-payment"]', (el) => el.textContent?.trim() ?? '');
+    await page.evaluate(() => {
+      const slider = document.querySelector('#mc-rate');
+      slider.value = '9';
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await new Promise((done) => setTimeout(done, 300));
+    const mortgageAfter = await page.$eval('[data-testid="monthly-payment"]', (el) => el.textContent?.trim() ?? '');
+    assert(
+      'features',
+      'mortgage payment recalculates when the rate changes',
+      mortgageBefore !== mortgageAfter && /\$[\d,]+\.\d{2}/.test(mortgageAfter),
+      `${mortgageBefore} -> ${mortgageAfter}`
+    );
+
+    const donutState = await page.evaluate(() => {
+      const svg = document.querySelector('[data-testid="donut-chart"] svg');
+      const arcs = Array.from(svg?.querySelectorAll('circle') ?? []);
+      return {
+        arcs: arcs.length,
+        hasDashArray: arcs.slice(1).every((arc) => (arc.getAttribute('stroke-dasharray') ?? '').length > 0)
+      };
+    });
+    assert(
+      'features',
+      'payment envelope renders an SVG donut breakdown',
+      donutState.arcs >= 2 && donutState.hasDashArray,
+      JSON.stringify(donutState)
+    );
+
+    await page.waitForSelector('app-floor-plan-viewer .floorplan-stage', { timeout: 10_000 });
+    const planState = await page.evaluate(() => {
+      const viewer = document.querySelector('app-floor-plan-viewer');
+      const svg = viewer?.querySelector('.floorplan-stage svg');
+      const markers = Array.from(viewer?.querySelectorAll('.floorplan-stage button[aria-label]') ?? []);
+      return {
+        levels: viewer?.querySelectorAll('[role="group"][aria-label="Floor level"] button').length ?? 0,
+        hasSvg: Boolean(svg),
+        svgTag: svg?.tagName ?? null,
+        markerCount: markers.length,
+        markerPositions: markers.map((marker) => `${marker.style.left}/${marker.style.top}`),
+        scriptTags: viewer?.querySelectorAll('script').length ?? 0
+      };
+    });
+    assert(
+      'features',
+      'floor plan renders sanitized inline SVG across multiple levels',
+      planState.hasSvg && planState.svgTag === 'svg' && planState.levels >= 2,
+      JSON.stringify(planState)
+    );
+    assert('features', 'floor plan markup carries no script elements', planState.scriptTags === 0, JSON.stringify(planState));
+    assert(
+      'features',
+      'hotspot coordinates are clamped inside the viewport',
+      planState.markerPositions.length > 0 &&
+        planState.markerPositions.every((position) => {
+          const [left, top] = position.split('/').map((value) => Number.parseFloat(value));
+          return left >= 0 && left <= 100 && top >= 0 && top <= 100;
+        }),
+      JSON.stringify(planState.markerPositions)
+    );
+
+    const levelButtons = await page.$$('app-floor-plan-viewer [role="group"][aria-label="Floor level"] button');
+    await clickElement(page, levelButtons[1]);
+    await new Promise((done) => setTimeout(done, 300));
+    const switchedLevel = await page.$eval(
+      'app-floor-plan-viewer [role="group"][aria-label="Floor level"]',
+      (el) => Array.from(el.querySelectorAll('button')).findIndex((button) => button.getAttribute('aria-pressed') === 'true')
+    );
+    assert('features', 'level switcher activates a different plan', switchedLevel === 1, `active=${switchedLevel}`);
+
+    const zoomLabelBefore = await page.$eval(
+      'app-floor-plan-viewer [role="group"][aria-label="Floor level"] ~ div span.editorial-label',
+      (el) => el.textContent?.trim()
+    ).catch(() => null);
+    const zoomInButton = await page.$('app-floor-plan-viewer button[aria-label="Zoom in"]');
+    await clickElement(page, zoomInButton);
+    await new Promise((done) => setTimeout(done, 250));
+    const zoomState = await page.evaluate(() => {
+      const stage = document.querySelector('app-floor-plan-viewer .floorplan-stage');
+      const surface = stage?.querySelector('[style*="translate3d"]');
+      return surface?.getAttribute('style') ?? '';
+    });
+    assert('features', 'viewer zoom applies a bounded transform', /scale\(1\.[0-9]+\)/.test(zoomState), `${zoomLabelBefore} ${zoomState}`);
+
+    const marker = await page.$('app-floor-plan-viewer .floorplan-stage button[aria-label]');
+    await clickElement(page, marker);
+    await page.waitForFunction(
+      () => !(document.querySelector('[data-testid="hotspot-log"]')?.textContent ?? '').includes('none'),
+      { timeout: 5000 }
+    );
+    const hotspotLog = await page.$eval('[data-testid="hotspot-log"]', (el) => el.textContent ?? '');
+    assert('features', 'hotspot selection surfaces its description', !hotspotLog.includes('none'), hotspotLog.trim());
+
+    const tourButtons = await page.$$('app-ui-preview ui-button button');
+    for (const candidate of tourButtons) {
+      const text = await candidate.evaluate((node) => node.textContent ?? '');
+      if (text.includes('Schedule a tour')) {
+        await clickElement(page, candidate);
+        break;
+      }
+    }
+    await page.waitForSelector('app-schedule-tour-dialog [role="dialog"]', { timeout: 10_000 });
+
+    const emptySubmitButtons = await page.$$('app-schedule-tour-dialog ui-button button');
+    await clickElement(page, emptySubmitButtons[emptySubmitButtons.length - 1]);
+    await new Promise((done) => setTimeout(done, 300));
+    const validationState = await page.evaluate(() => ({
+      alerts: document.querySelectorAll('app-schedule-tour-dialog [role="alert"]').length,
+      invalidFields: document.querySelectorAll('app-schedule-tour-dialog [aria-invalid="true"]').length
+    }));
+    assert(
+      'features',
+      'empty tour submission surfaces field validation',
+      validationState.alerts >= 3 && validationState.invalidFields >= 3,
+      JSON.stringify(validationState)
+    );
+
+    await page.evaluate(() => {
+      const setValue = (input, value) => {
+        input.value = value;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      };
+      const inputs = Array.from(document.querySelectorAll('app-schedule-tour-dialog ui-input input'));
+      setValue(inputs[0], 'Elena Rostova');
+      setValue(inputs[1], 'elena.rostova@example.com');
+      setValue(inputs[2], '+1 415 555 0184');
+      const selects = Array.from(document.querySelectorAll('app-schedule-tour-dialog ui-select select'));
+      const slotSelect = selects[selects.length - 1];
+      const option = Array.from(slotSelect.options).find((entry) => entry.value !== '');
+      slotSelect.value = option?.value ?? '';
+      slotSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await new Promise((done) => setTimeout(done, 300));
+
+    const submitButtons = await page.$$('app-schedule-tour-dialog ui-button button');
+    await clickElement(page, submitButtons[submitButtons.length - 1]);
+    await page
+      .waitForFunction(
+        () => Boolean(document.querySelector('app-schedule-tour-dialog [data-testid="booking-confirmation"]')),
+        { timeout: 10_000 }
+      )
+      .catch(() => undefined);
+
+    const bookingState = await page.evaluate(async () => {
+      const log = document.querySelector('[data-testid="booking-log"]')?.textContent?.trim() ?? '';
+      const confirmation = Boolean(document.querySelector('[data-testid="booking-confirmation"]'));
+      const bookings = await new Promise((resolve) => {
+        const request = indexedDB.open('real_estate_portal_db');
+        request.onsuccess = () => {
+          const db = request.result;
+          const all = db.transaction('bookings', 'readonly').objectStore('bookings').getAll();
+          all.onsuccess = () => resolve(all.result);
+          all.onerror = () => resolve([]);
+        };
+        request.onerror = () => resolve([]);
+      });
+      return { log, confirmation, bookings };
+    });
+    assert(
+      'features',
+      'valid tour submission persists an agent-verified booking',
+      bookingState.confirmation &&
+        bookingState.bookings.length === 1 &&
+        bookingState.bookings[0].agentIsActive === true &&
+        bookingState.log.includes('agent verified'),
+      JSON.stringify({ log: bookingState.log, count: bookingState.bookings.length })
+    );
+    assert(
+      'features',
+      'booking stays inside the tenant boundary',
+      bookingState.bookings.every((booking) => booking.tenantId === 't-1001-atelier'),
+      JSON.stringify(bookingState.bookings.map((booking) => booking.tenantId))
+    );
+
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.querySelector('[role="dialog"]') === null, { timeout: 10_000 });
+
+    // ------------------------------------------------------ tenant switcher
+    console.log('\n[phase] tenant switch utility');
+
+    await gotoAndSettle(page, '/t/atelier-living');
+    await page.waitForSelector('app-tenant-switcher button', { timeout: 20_000 });
+    await clickElement(page, await page.$('app-tenant-switcher button'));
+    await page.waitForSelector('app-tenant-switcher [role="dialog"]', { timeout: 10_000 });
+
+    const monolithHref = await page.evaluate(() => {
+      const links = Array.from(document.querySelectorAll('app-tenant-switcher [role="dialog"] a'));
+      return links.find((link) => link.textContent?.includes('Monolith'))?.getAttribute('href') ?? '';
+    });
+    assert('switcher', 'switcher lists the other tenant', monolithHref.includes('/t/monolith-properties'), monolithHref);
+
+    await page.evaluate(() => {
+      const links = Array.from(document.querySelectorAll('app-tenant-switcher [role="dialog"] a'));
+      links.find((link) => link.textContent?.includes('Monolith'))?.click();
+    });
+    await page.waitForFunction(() => location.pathname === '/t/monolith-properties', { timeout: 15_000 });
+    await new Promise((done) => setTimeout(done, 600));
+    const switchedState = await page.evaluate(() => ({
+      primary: document.documentElement.style.getPropertyValue('--color-brand-primary').trim(),
+      text: document.body.textContent ?? ''
+    }));
+    assert(
+      'switcher',
+      'switching tenant re-themes and re-scopes in place',
+      switchedState.primary.toLowerCase() === '#111213' && switchedState.text.includes('Monolith'),
+      JSON.stringify({ primary: switchedState.primary })
+    );
+
     // -------------------------------------------------------------- errors
     console.log('\n[phase] runtime health');
     assert('runtime', 'no uncaught page errors', errors.pageErrors.length === 0, errors.pageErrors.join(' | '));
     assert('runtime', 'no console errors', errors.console.length === 0, errors.console.slice(0, 5).join(' | '));
+    assert('runtime', 'no failed network responses', errors.requestFailures.length === 0, errors.requestFailures.slice(0, 5).join(' | '));
   } finally {
     if (browser) await browser.close();
     preview.kill('SIGTERM');

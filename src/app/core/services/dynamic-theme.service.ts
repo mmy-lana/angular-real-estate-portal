@@ -2,6 +2,9 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { DOCUMENT } from '@angular/common';
 import { TenantThemeTokens } from '../models';
 
+/** Platform mark used when a tenant publishes no favicon of its own. */
+export const DEFAULT_FAVICON_URL = '/favicon.svg';
+
 /**
  * Runtime theming bridge.
  *
@@ -47,22 +50,21 @@ export class DynamicThemeService {
   }
 
   /**
-   * Applies the tenant favicon when one is published, and removes the tag when a
-   * tenant ships none so a previous tenant's mark never leaks across a switch.
+   * Applies the tenant favicon when one is published. Tenants that ship no
+   * mark fall back to the platform favicon rather than removing the link: a
+   * missing `<link rel="icon">` makes browsers request `/favicon.ico`, which
+   * would answer 404 on every tenant switch.
    */
   public applyFavicon(faviconUrl: string): void {
     const head = this.document.head;
     let link = head.querySelector<HTMLLinkElement>('link[rel="icon"]');
-    if (!faviconUrl) {
-      link?.remove();
-      return;
-    }
     if (!link) {
       link = this.document.createElement('link');
       link.rel = 'icon';
       head.appendChild(link);
     }
-    link.href = faviconUrl;
+    link.type = faviconUrl.endsWith('.svg') ? 'image/svg+xml' : 'image/x-icon';
+    link.href = faviconUrl === '' ? DEFAULT_FAVICON_URL : faviconUrl;
   }
 
   /** Applies branding side effects (favicon) that ride along with the palette. */

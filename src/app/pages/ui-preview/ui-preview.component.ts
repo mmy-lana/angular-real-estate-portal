@@ -15,6 +15,11 @@ import { createDefaultFilterCriteria } from '../../core/utils/property-filter.ut
 import { PropertyCardComponent } from '../../shared/compound/property-card/property-card.component';
 import { ArchitecturalGalleryComponent } from '../../shared/compound/architectural-gallery/architectural-gallery.component';
 import { PropertyFilterBarComponent } from '../../features/property-filter/property-filter-bar.component';
+import { MortgageCalculatorComponent } from '../../features/mortgage-calculator/mortgage-calculator.component';
+import { FloorPlanViewerComponent } from '../../features/floor-plan-viewer/floor-plan-viewer.component';
+import { ScheduleTourDialogComponent } from '../../features/tour-booking/schedule-tour-dialog.component';
+import { AgentProfile, FloorPlanHotspot, MonthlyPaymentBreakdown, TourBookingRequest } from '../../core/models';
+import { MOCK_AGENTS } from '../../core/data/mock-data';
 
 const PREVIEW_TENANT_ID = 't-1001-atelier';
 
@@ -44,6 +49,9 @@ const SORT_OPTIONS: SelectOption[] = [
     PropertyCardComponent,
     ArchitecturalGalleryComponent,
     PropertyFilterBarComponent,
+    MortgageCalculatorComponent,
+    FloorPlanViewerComponent,
+    ScheduleTourDialogComponent,
     BadgeComponent,
     ButtonComponent,
     InputComponent,
@@ -195,7 +203,54 @@ const SORT_OPTIONS: SelectOption[] = [
             {{ previewCriteria().sortBy }}
           </p>
         </section>
+
+        @if (previewProperty(); as subject) {
+          <section class="flex flex-col gap-4">
+            <h2 class="text-2xl editorial-serif text-(--color-brand-primary)">Mortgage calculator</h2>
+            <div class="border border-(--color-brand-line) p-4 sm:p-6">
+              <app-mortgage-calculator
+                [initialPrice]="subject.price"
+                [currency]="subject.currency"
+                (calculationUpdated)="lastBreakdown.set($event)"
+              />
+            </div>
+            <p class="text-xs text-(--color-brand-secondary)" data-testid="mortgage-log">
+              Last envelope: {{ lastBreakdown()?.totalMonthlyPayment ?? 'pending' }}
+            </p>
+          </section>
+
+          <section class="flex flex-col gap-4">
+            <h2 class="text-2xl editorial-serif text-(--color-brand-primary)">Floor plan viewer</h2>
+            <div class="border border-(--color-brand-line) p-4 sm:p-6">
+              <app-floor-plan-viewer [levels]="subject.floorPlans" (hotspotClicked)="activeHotspot.set($event)" />
+            </div>
+            <p class="text-xs text-(--color-brand-secondary)" data-testid="hotspot-log">
+              Active hotspot: {{ activeHotspot()?.title ?? 'none' }}
+            </p>
+          </section>
+
+          <section class="flex flex-col gap-4">
+            <h2 class="text-2xl editorial-serif text-(--color-brand-primary)">Tour booking</h2>
+            <div class="flex flex-wrap gap-3">
+              <ui-button label="Schedule a tour" (clicked)="tourDialogOpen.set(true)" />
+            </div>
+          </section>
+
+          <app-schedule-tour-dialog
+            [isOpen]="tourDialogOpen()"
+            [property]="subject"
+            [agent]="previewAgent()!"
+            (closed)="tourDialogOpen.set(false)"
+            (bookingCompleted)="confirmedTour.set($event)"
+          />
+        }
       </main>
+
+      @if (confirmedTour(); as booking) {
+        <p class="mx-auto max-w-5xl px-4 pb-8 text-xs text-(--color-brand-secondary)" data-testid="booking-log">
+          Booking persisted: {{ booking.id.slice(0, 8) }} · {{ booking.agentIsActive ? 'agent verified' : 'unverified' }}
+        </p>
+      }
 
       <ui-sheet-modal
         [isOpen]="sheetOpen()"
@@ -228,6 +283,22 @@ export class UiPreviewComponent {
   protected readonly selectedPropertySlug = signal('none');
   protected readonly galleryIndex = signal(0);
   protected readonly galleryMedia = signal<PropertyMedia[]>([]);
+  // The richest plan set exercises the level switcher and clamped hotspots.
+  protected readonly previewProperty = computed(
+    () =>
+      [...this.previewProperties()].sort((a, b) => b.floorPlans.length - a.floorPlans.length)[0] ?? null
+  );
+  protected readonly previewAgent = computed<AgentProfile | null>(() => {
+    const subject = this.previewProperty();
+    if (!subject) {
+      return null;
+    }
+    return MOCK_AGENTS.find((agent) => agent.id === subject.listingAgentId && agent.tenantId === subject.tenantId) ?? null;
+  });
+  protected readonly lastBreakdown = signal<MonthlyPaymentBreakdown | null>(null);
+  protected readonly activeHotspot = signal<FloorPlanHotspot | null>(null);
+  protected readonly tourDialogOpen = signal(false);
+  protected readonly confirmedTour = signal<TourBookingRequest | null>(null);
 
   protected readonly sortOptions = SORT_OPTIONS;
   protected readonly fullName = signal('');

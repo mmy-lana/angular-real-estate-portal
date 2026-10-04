@@ -1,0 +1,133 @@
+<section class="flex flex-col gap-4" aria-label="Interactive floor plans">
+  @if (hasLevels()) {
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="flex flex-wrap gap-2" role="group" aria-label="Floor level">
+        @for (level of orderedLevels(); track level.id; let position = $index) {
+          <button
+            type="button"
+            class="inline-flex min-h-11 items-center border px-3 editorial-label transition-colors"
+            [class.border-(--color-brand-primary)]="position === activeLevelIndex()"
+            [class.bg-(--color-brand-primary)]="position === activeLevelIndex()"
+            [class.text-(--color-brand-inverse)]="position === activeLevelIndex()"
+            [class.border-(--color-brand-line)]="position !== activeLevelIndex()"
+            [class.text-(--color-brand-secondary)]="position !== activeLevelIndex()"
+            [attr.aria-pressed]="position === activeLevelIndex()"
+            (click)="selectLevel(position)"
+          >
+            {{ level.levelName }}
+          </button>
+        }
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          class="inline-flex h-11 w-11 items-center justify-center border border-(--color-brand-line) text-(--color-brand-primary)
+                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-brand-accent)"
+          aria-label="Zoom out"
+          (click)="zoomOut()"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+            <path d="M5 12h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+        </button>
+        <span class="editorial-label w-14 text-center text-(--color-brand-secondary) tabular-nums">
+          {{ zoomLabel() }}
+        </span>
+        <button
+          type="button"
+          class="inline-flex h-11 w-11 items-center justify-center border border-(--color-brand-line) text-(--color-brand-primary)
+                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-brand-accent)"
+          aria-label="Zoom in"
+          (click)="zoomIn()"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+            <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="inline-flex min-h-11 items-center border border-(--color-brand-line) px-3 editorial-label
+                 text-(--color-brand-secondary) focus-visible:outline-2 focus-visible:outline-offset-2
+                 focus-visible:outline-(--color-brand-accent)"
+          [disabled]="!isZoomed()"
+          [class.opacity-40]="!isZoomed()"
+          (click)="resetView()"
+        >
+          Reset
+        </button>
+      </div>
+    </div>
+
+    <div
+      #stage
+      class="floorplan-stage relative h-[320px] w-full overflow-hidden border border-(--color-brand-line)
+             bg-(--color-brand-surface) sm:h-[420px]"
+      (pointerdown)="onPointerDown($event)"
+      (pointermove)="onPointerMove($event)"
+      (pointerup)="onPointerUp($event)"
+      (pointercancel)="onPointerUp($event)"
+      (pointerleave)="onPointerUp($event)"
+    >
+      @if (trustedSvg(); as svg) {
+        <div
+          class="absolute left-1/2 top-1/2 h-full w-full -translate-x-1/2 -translate-y-1/2 will-change-transform"
+          [style.transform]="transformStyle()"
+        >
+          <div class="h-full w-full origin-center" [innerHTML]="svg"></div>
+        </div>
+      } @else {
+        <p class="flex h-full items-center justify-center editorial-label text-(--color-brand-muted)">
+          Plan unavailable for this level
+        </p>
+      }
+
+      @for (entry of hotspots(); track entry.hotspot.id) {
+        <button
+          type="button"
+          class="absolute h-11 w-11 -translate-x-1/2 -translate-y-1/2"
+          [style.left]="entry.placement.left"
+          [style.top]="entry.placement.top"
+          [attr.aria-label]="entry.hotspot.title"
+          [attr.title]="entry.hotspot.title"
+          (click)="selectHotspot(entry.hotspot)"
+        >
+          <span
+            class="mx-auto flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-medium transition-colors"
+            [class.bg-(--color-brand-accent)]="activeHotspotId() !== entry.hotspot.id"
+            [class.text-(--color-brand-primary)]="activeHotspotId() !== entry.hotspot.id"
+            [class.bg-(--color-brand-primary)]="activeHotspotId() === entry.hotspot.id"
+            [class.text-(--color-brand-inverse)]="activeHotspotId() === entry.hotspot.id"
+            aria-hidden="true"
+            >{{ $index + 1 }}</span
+          >
+        </button>
+      }
+    </div>
+
+    <div class="flex flex-col gap-2">
+      @for (entry of hotspots(); track entry.hotspot.id) {
+        @if (activeHotspotId() === entry.hotspot.id) {
+          <div class="border-l-2 border-(--color-brand-accent) pl-3">
+            <p class="text-sm text-(--color-brand-primary)">{{ entry.hotspot.title }}</p>
+            <p class="mt-1 text-xs text-(--color-brand-secondary) text-pretty">{{ entry.hotspot.description }}</p>
+            @if (entry.clamped) {
+              <p class="mt-1">
+                <ui-badge label="Coordinates clamped to 0–1" tone="accent" />
+              </p>
+            }
+          </div>
+        }
+      } @empty {
+        <p class="text-xs text-(--color-brand-secondary)">Select a marker to read the space description.</p>
+      }
+    </div>
+  } @else {
+    <div class="flex flex-col items-center justify-center gap-2 border border-dashed border-(--color-brand-line) p-10">
+      <span class="editorial-label text-(--color-brand-muted)">No floor plans published</span>
+      <p class="max-w-xs text-center text-xs text-(--color-brand-secondary)">
+        The listing agent has not released drawings for this residence yet.
+      </p>
+    </div>
+  }
+</section>

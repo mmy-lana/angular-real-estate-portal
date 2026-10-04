@@ -1,0 +1,115 @@
+<ui-sheet-modal
+  [isOpen]="isOpen()"
+  title="Schedule a private tour"
+  [description]="property().title + ' · ' + property().address.neighborhood"
+  (closed)="dismiss()"
+>
+  @if (submitState() === 'success' && confirmedBooking(); as booking) {
+    <div class="flex flex-col gap-4" data-testid="booking-confirmation">
+      <div class="flex items-start gap-3">
+        <span
+          class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-(--color-brand-accent)
+                 text-(--color-brand-primary)"
+          aria-hidden="true"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" focusable="false">
+            <path d="m5 13 4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </span>
+        <div class="min-w-0">
+          <p class="text-sm text-(--color-brand-primary)">Request received</p>
+          <p class="mt-1 text-xs text-(--color-brand-secondary) text-pretty">
+            {{ agent().fullName }} will confirm
+            {{ formatTourDate(booking.scheduledDateTime) }} at
+            {{ formatTimeSlot(booking.scheduledDateTime) }} by email or phone.
+          </p>
+        </div>
+      </div>
+      <p class="editorial-label text-(--color-brand-muted)">Reference {{ booking.id.slice(0, 8).toUpperCase() }}</p>
+    </div>
+  } @else {
+    <div class="flex flex-col gap-5">
+      @if (!agentIsActive() || !agentTenantMatches()) {
+        <div class="border border-red-600/50 bg-red-50/60 p-3 text-xs text-red-800" role="alert">
+          This residence is no longer accepting tour requests. Please contact the agency directly.
+        </div>
+      }
+
+      <div class="grid gap-4 sm:grid-cols-2">
+        <ui-input
+          label="Full name"
+          autocomplete="name"
+          [value]="clientName()"
+          [error]="errorFor('clientName')"
+          (valueChange)="onNameChange($event)"
+        />
+        <ui-input
+          label="Email"
+          type="email"
+          inputmode="email"
+          autocomplete="email"
+          [value]="clientEmail()"
+          [error]="errorFor('clientEmail')"
+          (valueChange)="onEmailChange($event)"
+        />
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2">
+        <ui-input
+          label="Phone"
+          type="tel"
+          inputmode="tel"
+          autocomplete="tel"
+          placeholder="+1 (415) 000 0000"
+          [value]="clientPhone()"
+          [error]="errorFor('clientPhone')"
+          (valueChange)="onPhoneChange($event)"
+        />
+        <ui-select
+          label="Tour format"
+          [options]="tourTypeOptions()"
+          [value]="tourType()"
+          [error]="errorFor('tourType')"
+          (valueChange)="onTourTypeChange($event)"
+        />
+      </div>
+
+      <ui-select
+        label="Preferred slot"
+        placeholder="Select a date and time"
+        [options]="slotOptions()"
+        [value]="scheduledDateTime()"
+        [error]="errorFor('scheduledDateTime')"
+        (valueChange)="onSlotChange($event)"
+      />
+
+      <ui-input
+        label="Notes for the agent"
+        placeholder="Timing constraints, access requirements…"
+        [value]="notes()"
+        (valueChange)="onNotesChange($event)"
+      />
+
+      @if (submitError(); as message) {
+        <p class="border border-red-600/50 bg-red-50/60 p-3 text-xs text-red-800" role="alert" data-testid="booking-error">
+          {{ message }}
+        </p>
+      }
+    </div>
+  }
+
+  <div sheetFooter class="flex gap-3">
+    @if (submitState() === 'success') {
+      <ui-button label="Done" fullWidth (clicked)="dismiss()" />
+    } @else {
+      <ui-button label="Cancel" variant="outline" fullWidth (clicked)="dismiss()" />
+      <ui-button
+        label="Request tour"
+        fullWidth
+        [loading]="submitState() === 'submitting'"
+        [disabled]="!agentIsActive() || !agentTenantMatches()"
+        (clicked)="submit()"
+      />
+    }
+  </div>
+</ui-sheet-modal>

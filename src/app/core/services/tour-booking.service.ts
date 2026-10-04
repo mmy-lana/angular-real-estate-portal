@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { AgentProfile, TourBookingRequest } from '../models';
+import { AgentProfile, Property, TourBookingRequest } from '../models';
 import {
   AGENT_STORE,
   BOOKING_STORE,
@@ -58,7 +58,7 @@ export class TourBookingService {
       return { ok: false, reason: 'Security violation: assigned agent does not belong to the target tenant.' };
     }
 
-    const property = await this.storage.getById<{ tenantId?: string }>(PROPERTY_STORE, draft.propertyId);
+    const property = await this.storage.getById<Property>(PROPERTY_STORE, draft.propertyId);
     if (!property || property.tenantId !== draft.tenantId) {
       return { ok: false, reason: 'Security violation: residence does not belong to the target tenant.' };
     }

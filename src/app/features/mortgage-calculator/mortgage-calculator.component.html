@@ -1,0 +1,146 @@
+<section class="flex flex-col gap-6" aria-label="Mortgage calculator">
+  <header class="flex flex-wrap items-baseline justify-between gap-3">
+    <div>
+      <p class="editorial-label text-(--color-brand-secondary)">Payment envelope</p>
+      <p class="mt-1 text-xs text-(--color-brand-secondary)">
+        Loan amount {{ formatWhole(loanAmount()) }} over the selected term.
+      </p>
+    </div>
+    @if (breakdown(); as result) {
+      <p class="editorial-serif text-2xl tabular-nums text-(--color-brand-primary)" data-testid="monthly-payment">
+        {{ formatAmount(result.totalMonthlyPayment) }}<span class="text-sm">/mo</span>
+      </p>
+    }
+  </header>
+
+  <div class="flex flex-col gap-6 sm:flex-row sm:items-center">
+    <div class="mx-auto shrink-0 sm:mx-0" data-testid="donut-chart">
+      @if (segments().length > 0) {
+        <svg width="104" height="104" viewBox="0 0 104 104" role="img" aria-label="Monthly payment composition">
+          <circle cx="52" cy="52" [attr.r]="donutRadius" fill="none" stroke="var(--color-brand-line)" stroke-width="10" />
+          @for (segment of segments(); track segment.label) {
+            <circle
+              cx="52"
+              cy="52"
+              [attr.r]="donutRadius"
+              fill="none"
+              [attr.stroke]="segment.color"
+              stroke-width="10"
+              [attr.stroke-dasharray]="segment.dashArray"
+              [attr.stroke-dashoffset]="segment.dashOffset"
+              transform="rotate(-90 52 52)"
+            />
+          }
+          <text
+            x="52"
+            y="52"
+            text-anchor="middle"
+            dominant-baseline="central"
+            font-size="13"
+            fill="var(--color-brand-primary)"
+          >
+            {{ segments().length }} lines
+          </text>
+        </svg>
+      } @else {
+        <p class="editorial-label w-26 text-center text-(--color-brand-muted)">Awaiting valid inputs</p>
+      }
+    </div>
+
+    <ul class="grid flex-1 gap-2 sm:grid-cols-2">
+      @for (segment of segments(); track segment.label) {
+        <li class="flex items-center justify-between gap-3 text-xs">
+          <span class="flex min-w-0 items-center gap-2">
+            <span
+              class="h-2.5 w-2.5 shrink-0 rounded-full"
+              [style.background]="segment.color"
+              aria-hidden="true"
+            ></span>
+            <span class="truncate max-w-full text-(--color-brand-secondary)">{{ segment.label }}</span>
+          </span>
+          <span class="shrink-0 tabular-nums text-(--color-brand-primary)">
+            {{ formatAmount(segment.amount) }}
+          </span>
+        </li>
+      } @empty {
+        <li class="editorial-label text-(--color-brand-muted)">No payment computed yet</li>
+      }
+    </ul>
+  </div>
+
+  <div class="grid gap-5 sm:grid-cols-2">
+    <div class="flex flex-col gap-1.5">
+      <label for="mc-down-payment" class="editorial-label text-(--color-brand-secondary)">
+        Down payment · {{ downPaymentPercent() }}%
+      </label>
+      <input
+        id="mc-down-payment"
+        type="range"
+        min="0"
+        max="60"
+        step="1"
+        class="mortgage-slider"
+        [style.background]="sliderFill('downPaymentPercent')"
+        [attr.aria-valuenow]="downPaymentPercent()"
+        [value]="downPaymentPercent()"
+        (input)="onDownPaymentPercentInput($any($event.target).value)"
+      />
+      <p class="text-[11px] text-(--color-brand-secondary) tabular-nums">{{ formatWhole(form().downPaymentAmount) }}</p>
+    </div>
+
+    <div class="flex flex-col gap-1.5">
+      <label for="mc-rate" class="editorial-label text-(--color-brand-secondary)">
+        Interest rate · {{ form().interestRatePercentage }}%
+      </label>
+      <input
+        id="mc-rate"
+        type="range"
+        min="0"
+        max="12"
+        step="0.05"
+        class="mortgage-slider"
+        [style.background]="sliderFill('interestRatePercentage')"
+        [value]="form().interestRatePercentage"
+        (input)="onRateInput($any($event.target).value)"
+      />
+      <p class="text-[11px] text-(--color-brand-secondary)">Annual nominal rate, amortised monthly.</p>
+    </div>
+
+    <ui-select
+      label="Loan term"
+      [options]="termOptions"
+      [value]="form().loanTermYears.toString()"
+      (valueChange)="onTermChange($event)"
+    />
+
+    <ui-input
+      label="Annual property tax"
+      type="text"
+      inputMode="decimal"
+      [value]="form().annualPropertyTaxRatePercentage.toString()"
+      hint="Percent of the purchase price"
+      [error]="issueFor('annualPropertyTaxRatePercentage')"
+      (valueChange)="onTaxInput($event)"
+    />
+
+    <ui-input
+      label="Annual home insurance"
+      type="text"
+      inputMode="decimal"
+      [value]="form().annualHomeInsuranceRatePercentage.toString()"
+      hint="Percent of the purchase price"
+      [error]="issueFor('annualHomeInsuranceRatePercentage')"
+      (valueChange)="onInsuranceInput($event)"
+    />
+
+    <ui-input
+      label="Monthly HOA dues"
+      type="text"
+      inputMode="decimal"
+      [value]="form().monthlyHoaFee.toString()"
+      hint="Leave at zero when not applicable"
+      [error]="issueFor('monthlyHoaFee')"
+      (valueChange)="onHoaInput($event)"
+    />
+  </div>
+</section>
