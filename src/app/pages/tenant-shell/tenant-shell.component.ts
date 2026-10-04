@@ -21,6 +21,15 @@ import { TenantSwitcherComponent } from '../../shared/compound/tenant-switcher/t
   imports: [RouterOutlet, TenantNavComponent, TenantFooterComponent, TenantSwitcherComponent],
   template: `
     <div class="flex min-h-screen flex-col bg-(--color-brand-bg) text-(--color-brand-text)">
+      <aside
+        class="border-b border-(--color-brand-line) bg-(--color-brand-surface) px-4 py-1.5 text-center text-[11px] tracking-wide text-(--color-brand-secondary)"
+        role="note"
+        aria-label="Demonstration Notice"
+      >
+        <span class="font-medium text-(--color-brand-primary)">Demonstration Environment:</span>
+        All agencies, properties, architectural data, agents, and phone numbers are purely simulated mock data. No
+        commercial transactions are conducted.
+      </aside>
       <app-tenant-nav [tenant]="tenant()" />
       <main class="flex-1">
         <router-outlet />

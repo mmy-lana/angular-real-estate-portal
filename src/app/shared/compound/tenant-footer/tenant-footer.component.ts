@@ -84,8 +84,8 @@ import { TenantContextService } from '../../../core/services/tenant-context.serv
         <div
           class="mx-auto flex max-w-7xl flex-col gap-1 px-4 py-5 text-[11px] text-(--color-brand-muted) sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8"
         >
-          <span>© {{ currentYear }} {{ tenant().branding.legalEntityName }}. All rights reserved.</span>
-          <span>Multi-tenant architectural portal — tenant-isolated listings.</span>
+          <span>© {{ currentYear }} {{ tenant().branding.legalEntityName }}. Fictional simulation.</span>
+          <span>Demonstration portal — all listings, agents, and contacts are synthetic models.</span>
         </div>
       </div>
     </footer>

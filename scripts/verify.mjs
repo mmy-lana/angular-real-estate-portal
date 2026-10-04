@@ -1172,6 +1172,127 @@ async function run() {
 
     await page.setViewport(VIEWPORTS['w390']);
 
+    // ------------------------------------------------------- privacy & PII
+    console.log('\n[phase] privacy and PII anonymization');
+
+    const seededContacts = await page.evaluate(async () => {
+      const db = await window.openPortalDb();
+      const tenants = await window.readAll(db, 'tenants');
+      const agents = await window.readAll(db, 'agents');
+      return {
+        emails: [
+          ...tenants.map((tenant) => tenant.branding.contactEmail),
+          ...agents.map((agent) => agent.email)
+        ],
+        phones: [
+          ...tenants.map((tenant) => tenant.branding.contactPhone),
+          ...agents.map((agent) => agent.phone)
+        ],
+        socials: agents.flatMap((agent) => Object.values(agent.socialLinks ?? {})),
+        licenses: [
+          ...tenants.map((tenant) => tenant.branding.licenseNumber),
+          ...agents.map((agent) => agent.licenseCode)
+        ],
+        legalEntities: tenants.map((tenant) => tenant.branding.legalEntityName)
+      };
+    });
+
+    // RFC 2606 reserves `example` and any `*.example.{com,org,net}`; a tenant
+    // subdomain in front of the reserved label is still inside the safe range.
+    const RFC2606 = /(^|\.)(example|example\.(com|org|net))$/i;
+    const NANP_TEST = /^\+1 \(\d{3}\) 555-01\d{2}$/;
+
+    assert(
+      'privacy',
+      'every seeded email uses an RFC 2606 reserved domain',
+      seededContacts.emails.every((email) => RFC2606.test(email.split('@')[1] ?? '')),
+      seededContacts.emails.filter((email) => !RFC2606.test(email.split('@')[1] ?? '')).join(' | ')
+    );
+    assert(
+      'privacy',
+      'every seeded phone number uses the NANP 555-01xx test range',
+      seededContacts.phones.every((phone) => NANP_TEST.test(phone)),
+      seededContacts.phones.filter((phone) => !NANP_TEST.test(phone)).join(' | ')
+    );
+    assert(
+      'privacy',
+      'social profiles resolve to reserved example hosts',
+      seededContacts.socials.every((url) => RFC2606.test(new URL(url).hostname)),
+      seededContacts.socials.join(' | ')
+    );
+    assert(
+      'privacy',
+      'licence numbers are marked simulated',
+      seededContacts.licenses.every((entry) => entry.includes('Simulated')),
+      seededContacts.licenses.join(' | ')
+    );
+
+    const disclaimers = [];
+    for (const path of ['/t/atelier-living', '/t/monolith-properties']) {
+      await gotoAndSettle(page, path);
+      await page.waitForSelector('app-tenant-shell aside[role="note"]', { timeout: 20_000 });
+      const notice = await page.evaluate(() => {
+        const aside = document.querySelector('app-tenant-shell aside[role="note"]');
+        const rect = aside.getBoundingClientRect();
+        return {
+          text: (aside.textContent ?? '').replace(/\s+/g, ' ').trim(),
+          top: Math.round(rect.top),
+          label: aside.getAttribute('aria-label')
+        };
+      });
+      disclaimers.push({ path, ...notice });
+    }
+    assert(
+      'privacy',
+      'demonstration notice renders above the header on every tenant',
+      disclaimers.every(
+        (entry) => entry.text.startsWith('Demonstration Environment:') && entry.top < 120 && entry.label === 'Demonstration Notice'
+      ),
+      JSON.stringify(disclaimers.map((entry) => `${entry.path}:${entry.text.slice(0, 48)}`))
+    );
+
+    const footerCopy = await page.evaluate(
+      () => document.querySelector('app-tenant-footer')?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+    );
+    assert(
+      'privacy',
+      'footer identifies the portal as a fictional simulation',
+      footerCopy.includes('Fictional simulation') && footerCopy.includes('synthetic models'),
+      footerCopy.slice(-120)
+    );
+
+    await gotoAndSettle(page, '/t/atelier-living/property/the-kura-residence');
+    await page.waitForSelector('app-property-detail ui-button button', { timeout: 20_000 });
+    const railButtons = await page.$$('app-property-detail aside ui-button button');
+    await clickElement(page, railButtons[railButtons.length - 1]);
+    await page.waitForSelector('app-schedule-tour-dialog [role="dialog"]', { timeout: 10_000 });
+    const disclosure = await page.evaluate(() => {
+      const dialog = document.querySelector('app-schedule-tour-dialog [role="dialog"]');
+      const notes = Array.from(dialog.querySelectorAll('[role="note"]')).map((node) => (node.textContent ?? '').replace(/\s+/g, ' ').trim());
+      const firstField = dialog.querySelector('ui-input');
+      return {
+        notes,
+        // DOCUMENT_POSITION_FOLLOWING on the note means the first field comes
+        // after it in document order, which is the required reading sequence.
+        beforeFields:
+          Boolean(firstField) && notes.length > 0
+            ? Boolean(
+                dialog
+                  .querySelector('[role="note"]')
+                  .compareDocumentPosition(firstField) & Node.DOCUMENT_POSITION_FOLLOWING
+              )
+            : false
+      };
+    });
+    assert(
+      'privacy',
+      'tour dialog discloses local-only storage before any input field',
+      disclosure.notes.some((note) => note.startsWith('Privacy Disclosure:')) && disclosure.beforeFields,
+      JSON.stringify(disclosure.notes).slice(0, 180)
+    );
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => document.querySelector('[role="dialog"]') === null, { timeout: 10_000 });
+
     console.log('\n[phase] tenant switch utility');
 
     await gotoAndSettle(page, '/t/atelier-living');
